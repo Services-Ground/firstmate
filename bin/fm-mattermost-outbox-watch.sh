@@ -26,6 +26,9 @@ STATE="${FM_MATTERMOST_STATE_DIR:-$FM_HOME/state/mattermost-outbox}"
 THREAD_NAME="${FM_MATTERMOST_THREAD_NAME:-SG AI Coordination}"
 POLL="${FM_MATTERMOST_POLL:-5}"
 
+_LOCK_PATH=
+trap 'rmdir "$_LOCK_PATH" 2>/dev/null || true' EXIT
+
 usage() {
   cat >&2 <<'EOF'
 usage: fm-mattermost-outbox-watch.sh [--once|--watch]
@@ -65,8 +68,10 @@ with_lock() {
     fi
     sleep 0.1
   done
-  trap 'rmdir "$lock" 2>/dev/null || true' RETURN
+  _LOCK_PATH="$lock"
   scan_once
+  rmdir "$lock" 2>/dev/null || true
+  _LOCK_PATH=
 }
 
 hermes_target() {

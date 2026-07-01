@@ -3,7 +3,6 @@ Description=Watch firstmate PR outbox entries for Services Ground Mattermost
 Documentation=man:systemd.path(5)
 
 [Path]
-PathExistsGlob=%h/firstmate/data/outbox/*.json
 PathChanged=%h/firstmate/data/outbox
 Unit=firstmate-mattermost-outbox.service
 
