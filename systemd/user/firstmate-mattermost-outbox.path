@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch firstmate PR outbox entries for Services Ground Mattermost
+Documentation=man:systemd.path(5)
+
+[Path]
+PathChanged=%h/firstmate/data/outbox
+Unit=firstmate-mattermost-outbox.service
+
+[Install]
+WantedBy=default.target
