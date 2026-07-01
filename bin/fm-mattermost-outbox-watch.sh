@@ -69,9 +69,10 @@ with_lock() {
     sleep 0.1
   done
   _LOCK_PATH="$lock"
-  scan_once
+  scan_once; local rc=$?
   rmdir "$lock" 2>/dev/null || true
   _LOCK_PATH=
+  return "$rc"
 }
 
 hermes_target() {
