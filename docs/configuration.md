@@ -152,7 +152,7 @@ Install them with:
 systemctl --user enable --now firstmate-mattermost-outbox.path
 ```
 
-Each `data/outbox/*.json` entry may include a `target_channel_id` to direct the Mattermost post to a specific channel instead of the fallback thread, a `summary` field, and `board_id`/`card_id`/`new_status` fields for optional Focalboard card sync.
+Each `data/outbox/*.json` entry may include a `target_channel_id` to direct the Mattermost post to a specific channel instead of the fallback thread, a `summary` field that prepends a `Summary:` line to the Mattermost message and any Focalboard comment, and `board_id`/`card_id`/`new_status` fields for optional Focalboard card sync.
 Set `FM_FOCALBOARD_URL` and `FM_FOCALBOARD_TOKEN` for card sync; missing credentials log a warning and do not block the Mattermost post.
 Durable idempotency markers live under `state/mattermost-outbox/` so duplicate path-unit fires are harmless.
 Use `--watch` mode for manual smoke tests that poll continuously.
