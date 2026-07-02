@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Scan firstmate's local data/outbox/*.json records and post new PR entries to
-# the canonical Services Ground Mattermost coordination thread through hermes.
+# Mattermost through hermes, optionally syncing the result to a Focalboard card.
 #
 # Default mode is one scan, suitable for systemd path activation:
 #   bin/fm-mattermost-outbox-watch.sh
@@ -16,6 +16,8 @@
 #   FM_MATTERMOST_STATE_DIR    Override durable state dir; defaults to
 #                              $FM_HOME/state/mattermost-outbox.
 #   FM_MATTERMOST_POLL         Poll interval for --watch; defaults to 5 seconds.
+#   FM_FOCALBOARD_URL          Focalboard API base URL.
+#   FM_FOCALBOARD_TOKEN        Focalboard bearer token.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,16 +27,18 @@ OUTBOX="${FM_MATTERMOST_OUTBOX_DIR:-$FM_HOME/data/outbox}"
 STATE="${FM_MATTERMOST_STATE_DIR:-$FM_HOME/state/mattermost-outbox}"
 THREAD_NAME="${FM_MATTERMOST_THREAD_NAME:-SG AI Coordination}"
 POLL="${FM_MATTERMOST_POLL:-5}"
+DEFAULT_TARGET=
 
-_LOCK_PATH=
-trap 'rmdir "$_LOCK_PATH" 2>/dev/null || true' EXIT
+LOCK_FD=
+trap '[ -n "${LOCK_FD:-}" ] && eval "exec ${LOCK_FD}>&-" 2>/dev/null || true' EXIT
 
 usage() {
   cat >&2 <<'EOF'
 usage: fm-mattermost-outbox-watch.sh [--once|--watch]
 
-Scan data/outbox/*.json for new PR entries and post each PR URL plus risk to the
-Services Ground Mattermost coordination thread through hermes.
+Scan data/outbox/*.json for new PR entries and post each PR URL plus risk to
+Mattermost through hermes. Entries may name a target_channel_id and Focalboard
+card fields; older entries still fall back to SG AI Coordination.
 EOF
 }
 
@@ -51,27 +55,23 @@ case "$POLL" in
 esac
 
 mkdir_p_state() {
-  mkdir -p "$STATE/posted" 2>/dev/null || {
+  mkdir -p "$STATE/posted" "$STATE/focalboard/commented" "$STATE/focalboard/moved" 2>/dev/null || {
     echo "fm-mattermost-outbox-watch: cannot create state dir: $STATE" >&2
     return 1
   }
 }
 
 with_lock() {
-  local lock="$STATE/lock" n=0
   mkdir_p_state || return 1
-  while ! mkdir "$lock" 2>/dev/null; do
-    n=$((n + 1))
-    if [ "$n" -ge 20 ]; then
-      echo "fm-mattermost-outbox-watch: another scan is still running" >&2
-      return 0
-    fi
-    sleep 0.1
-  done
-  _LOCK_PATH="$lock"
+  exec {LOCK_FD}<>"$STATE/lock.flock"
+  if ! flock -w 2 "$LOCK_FD"; then
+    echo "fm-mattermost-outbox-watch: another scan is still running" >&2
+    return 1
+  fi
   scan_once; local rc=$?
-  rmdir "$lock" 2>/dev/null || true
-  _LOCK_PATH=
+  flock -u "$LOCK_FD"
+  eval "exec ${LOCK_FD}>&-"
+  LOCK_FD=
   return "$rc"
 }
 
@@ -154,36 +154,89 @@ json_risk() {
   ' "$file"
 }
 
+json_summary() {
+  local file=$1
+  jq -r '
+    [
+      .summary?,
+      .message?,
+      .description?
+    ]
+    | map(select(. != null))
+    | .[0] // ""
+    | if type == "string" then . else tostring end
+  ' "$file"
+}
+
+json_string_field() {
+  local file=$1 field=$2
+  jq -r --arg field "$field" '
+    .[$field]? // ""
+    | if type == "string" then . else tostring end
+  ' "$file"
+}
+
 post_key() {
   printf '%s' "$1" | sha256sum | awk '{print $1}'
 }
 
+mattermost_target_for() {
+  local file=$1 channel_id
+  channel_id=$(json_string_field "$file" target_channel_id 2>/dev/null) || return 1
+  if [ -n "$channel_id" ]; then
+    printf 'mattermost:%s\n' "$channel_id"
+    return 0
+  fi
+  if [ -z "$DEFAULT_TARGET" ]; then
+    DEFAULT_TARGET=$(hermes_target) || return 1
+  fi
+  printf '%s\n' "$DEFAULT_TARGET"
+}
+
+mattermost_marker_for() {
+  local url=$1 target=$2 channel_id=$3 key
+  if [ -n "$channel_id" ]; then
+    key=$(post_key "$url|mattermost|$target")
+  else
+    key=$(post_key "$url")
+  fi
+  printf '%s/posted/%s.posted\n' "$STATE" "$key"
+}
+
 message_file_for() {
-  local url=$1 risk=$2 out=$3
+  local url=$1 risk=$2 summary=$3 out=$4
   {
+    [ -n "$summary" ] && printf 'Summary: %s\n' "$summary"
     printf 'PR: %s\n' "$url"
     printf 'Risk: %s\n' "$risk"
   } > "$out"
 }
 
-post_pr() {
-  local file=$1 target=$2 url risk key marker tmp msg rc
-  url=$(json_pr_url "$file" 2>/dev/null) || {
-    echo "fm-mattermost-outbox-watch: malformed JSON: $file" >&2
-    return 0
-  }
-  [ -n "$url" ] || return 0
+record_marker() {
+  local marker=$1 tmp
+  shift
+  tmp="$marker.tmp.$$"
+  {
+    while [ "$#" -gt 0 ]; do
+      printf '%s\n' "$1"
+      shift
+    done
+    date -u '+posted_at=%Y-%m-%dT%H:%M:%SZ'
+  } > "$tmp" && mv -f "$tmp" "$marker"
+}
 
-  risk=$(json_risk "$file" 2>/dev/null) || risk=unknown
-  key=$(post_key "$url")
-  marker="$STATE/posted/$key.posted"
+post_mattermost() {
+  local file=$1 url=$2 risk=$3 summary=$4 target channel_id marker msg rc
+  target=$(mattermost_target_for "$file") || return 1
+  channel_id=$(json_string_field "$file" target_channel_id 2>/dev/null) || channel_id=
+  marker=$(mattermost_marker_for "$url" "$target" "$channel_id")
   [ -e "$marker" ] && return 0
 
   msg=$(mktemp "${TMPDIR:-/tmp}/fm-mattermost-outbox.XXXXXX") || {
     echo "fm-mattermost-outbox-watch: cannot create temp message" >&2
     return 1
   }
-  message_file_for "$url" "$risk" "$msg"
+  message_file_for "$url" "$risk" "$summary" "$msg"
   hermes send --to "$target" --file "$msg" --quiet
   rc=$?
   rm -f "$msg"
@@ -192,13 +245,140 @@ post_pr() {
     return 1
   fi
 
-  tmp="$marker.tmp.$$"
-  {
-    printf 'url=%s\n' "$url"
-    printf 'risk=%s\n' "$risk"
-    printf 'source=%s\n' "$file"
-    date -u '+posted_at=%Y-%m-%dT%H:%M:%SZ'
-  } > "$tmp" && mv -f "$tmp" "$marker"
+  record_marker "$marker" \
+    "url=$url" \
+    "risk=$risk" \
+    "target=$target" \
+    "source=$file" || return 1
+}
+
+focalboard_api_base() {
+  local base=${FM_FOCALBOARD_URL:-}
+  base=${base%/}
+  printf '%s\n' "$base"
+}
+
+focalboard_comment_text() {
+  local url=$1 risk=$2 summary=$3
+  jq -rn --arg summary "$summary" --arg url "$url" --arg risk "$risk" '
+    [
+      (if $summary != "" then "Summary: \($summary)" else empty end),
+      "PR: \($url)",
+      "Risk: \($risk)"
+    ] | join("\n")
+  '
+}
+
+focalboard_comment_payload() {
+  local board_id=$1 card_id=$2 url=$3 risk=$4 summary=$5 key now title
+  key=$(post_key "$url|focalboard-comment|$board_id|$card_id")
+  now=$(date '+%s%3N')
+  title=$(focalboard_comment_text "$url" "$risk" "$summary") || return 1
+  jq -cn \
+    --arg id "fm-$key" \
+    --arg board_id "$board_id" \
+    --arg card_id "$card_id" \
+    --argjson now "$now" \
+    --arg title "$title" \
+    '[{
+      id: $id[0:26],
+      parentId: $card_id,
+      schema: 1,
+      type: "comment",
+      title: $title,
+      fields: {},
+      createAt: $now,
+      updateAt: $now,
+      boardId: $board_id
+    }]'
+}
+
+focalboard_status_payload() {
+  local new_status=$1
+  jq -cn --arg new_status "$new_status" '{updatedProperties:{status:$new_status}}'
+}
+
+focalboard_curl() {
+  local method=$1 url=$2 data=$3 tmpout http_code rc
+  tmpout=$(mktemp "${TMPDIR:-/tmp}/fm-focalboard.XXXXXX") || return 1
+  http_code=$(printf 'header = "Authorization: Bearer %s"\n' "$FM_FOCALBOARD_TOKEN" \
+    | curl -K - -sS -X "$method" \
+        -H "Content-Type: application/json" \
+        -H "X-Requested-With: XMLHttpRequest" \
+        --data "$data" \
+        -o "$tmpout" -w '%{http_code}' \
+        "$url")
+  rc=$?
+  if [ "$rc" -ne 0 ] || { [ -n "$http_code" ] && [ "$http_code" -ge 400 ] 2>/dev/null; }; then
+    echo "fm-mattermost-outbox-watch: focalboard API error HTTP ${http_code:-?}: $(cat "$tmpout")" >&2
+    rm -f "$tmpout"
+    return 1
+  fi
+  rm -f "$tmpout"
+}
+
+sync_focalboard() {
+  local file=$1 url=$2 risk=$3 summary=$4 board_id card_id new_status base marker payload key
+  board_id=$(json_string_field "$file" board_id 2>/dev/null) || return 1
+  card_id=$(json_string_field "$file" card_id 2>/dev/null) || return 1
+  new_status=$(json_string_field "$file" new_status 2>/dev/null) || return 1
+  [ -n "$board_id" ] && [ -n "$card_id" ] || return 0
+
+  if [ -z "${FM_FOCALBOARD_URL:-}" ] || [ -z "${FM_FOCALBOARD_TOKEN:-}" ]; then
+    echo "fm-mattermost-outbox-watch: warning: Focalboard card sync requested for $file but FM_FOCALBOARD_URL or FM_FOCALBOARD_TOKEN is missing; Mattermost post succeeded" >&2
+    return 0
+  fi
+  command -v curl >/dev/null 2>&1 || {
+    echo "fm-mattermost-outbox-watch: curl not found for Focalboard sync" >&2
+    return 1
+  }
+
+  base=$(focalboard_api_base)
+  key=$(post_key "$url|focalboard-comment|$board_id|$card_id")
+  marker="$STATE/focalboard/commented/$key.posted"
+  if [ ! -e "$marker" ]; then
+    payload=$(focalboard_comment_payload "$board_id" "$card_id" "$url" "$risk" "$summary") || return 1
+    focalboard_curl POST "$base/boards/$board_id/blocks?disable_notify=true" "$payload" || {
+      echo "fm-mattermost-outbox-watch: Focalboard comment failed for $file" >&2
+      return 1
+    }
+    record_marker "$marker" \
+      "url=$url" \
+      "board_id=$board_id" \
+      "card_id=$card_id" \
+      "source=$file" || return 1
+  fi
+
+  [ -n "$new_status" ] || return 0
+  key=$(post_key "$url|focalboard-status|$board_id|$card_id|$new_status")
+  marker="$STATE/focalboard/moved/$key.posted"
+  [ -e "$marker" ] && return 0
+  payload=$(focalboard_status_payload "$new_status") || return 1
+  focalboard_curl PATCH "$base/cards/$card_id?disable_notify=true" "$payload" || {
+    echo "fm-mattermost-outbox-watch: Focalboard status move failed for $file" >&2
+    return 1
+  }
+  record_marker "$marker" \
+    "url=$url" \
+    "board_id=$board_id" \
+    "card_id=$card_id" \
+    "new_status=$new_status" \
+    "source=$file" || return 1
+}
+
+post_pr() {
+  local file=$1 url risk summary
+  url=$(json_pr_url "$file" 2>/dev/null) || {
+    echo "fm-mattermost-outbox-watch: malformed JSON: $file" >&2
+    return 0
+  }
+  [ -n "$url" ] || return 0
+
+  risk=$(json_risk "$file" 2>/dev/null) || risk=unknown
+  summary=$(json_summary "$file" 2>/dev/null) || summary=
+  post_mattermost "$file" "$url" "$risk" "$summary" || return 1
+  sync_focalboard "$file" "$url" "$risk" "$summary" || \
+    echo "fm-mattermost-outbox-watch: Focalboard sync failed for $file (non-fatal)" >&2
 }
 
 scan_once() {
@@ -212,11 +392,9 @@ scan_once() {
     return 1
   }
 
-  local target file
-  target=$(hermes_target) || return 1
-
+  local file
   find "$OUTBOX" -maxdepth 1 -type f -name '*.json' -print | LC_ALL=C sort | while IFS= read -r file; do
-    post_pr "$file" "$target" || exit 1
+    post_pr "$file" || exit 1
   done
 }
 
