@@ -70,6 +70,12 @@ while [ "\$#" -gt 0 ]; do
       shift
       printf 'HEADER=%s\n' "\${1:-}" >> "\$dir/call-\$n.txt"
       ;;
+    -K)
+      shift
+      if [ "\${1:-}" = - ]; then
+        cat > "\$dir/stdin-config-\$n.txt"
+      fi
+      ;;
     --data)
       shift
       data=\${1:-}
@@ -319,6 +325,7 @@ JSON
   assert_grep "METHOD=POST" "$curl_log/call-1.txt" "comment call should use POST"
   assert_grep "URL=https://boards.example.test/plugins/focalboard/api/v1/boards/board123/blocks?disable_notify=true" "$curl_log/call-1.txt" "comment call should use the board blocks route"
   assert_grep "HEADER=X-Requested-With: XMLHttpRequest" "$curl_log/call-1.txt" "comment call must include X-Requested-With"
+  assert_grep 'Authorization: Bearer dummy-token' "$curl_log/stdin-config-1.txt" "comment call must send token via curl stdin config"
   jq -e '.[0].type == "comment" and .[0].boardId == "board123" and .[0].parentId == "card456"' "$curl_log/body-1.json" >/dev/null \
     || fail "comment payload should create a comment block under the card"
   jq -e '.[0].title | contains("Summary: Card sync is ready.") and contains("PR: https://github.com/kunchenguid/firstmate/pull/127") and contains("Risk: medium")' "$curl_log/body-1.json" >/dev/null \
