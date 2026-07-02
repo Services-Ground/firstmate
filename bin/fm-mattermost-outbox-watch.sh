@@ -299,13 +299,22 @@ focalboard_status_payload() {
 }
 
 focalboard_curl() {
-  local method=$1 url=$2 data=$3
-  printf 'header = "Authorization: Bearer %s"\n' "$FM_FOCALBOARD_TOKEN" \
-    | curl -K - -fsS -X "$method" \
+  local method=$1 url=$2 data=$3 tmpout http_code rc
+  tmpout=$(mktemp "${TMPDIR:-/tmp}/fm-focalboard.XXXXXX") || return 1
+  http_code=$(printf 'header = "Authorization: Bearer %s"\n' "$FM_FOCALBOARD_TOKEN" \
+    | curl -K - -sS -X "$method" \
         -H "Content-Type: application/json" \
         -H "X-Requested-With: XMLHttpRequest" \
         --data "$data" \
-        "$url" >/dev/null
+        -o "$tmpout" -w '%{http_code}' \
+        "$url")
+  rc=$?
+  if [ "$rc" -ne 0 ] || { [ -n "$http_code" ] && [ "$http_code" -ge 400 ] 2>/dev/null; }; then
+    echo "fm-mattermost-outbox-watch: focalboard API error HTTP ${http_code:-?}: $(cat "$tmpout")" >&2
+    rm -f "$tmpout"
+    return 1
+  fi
+  rm -f "$tmpout"
 }
 
 sync_focalboard() {
@@ -316,7 +325,7 @@ sync_focalboard() {
   [ -n "$board_id" ] && [ -n "$card_id" ] || return 0
 
   if [ -z "${FM_FOCALBOARD_URL:-}" ] || [ -z "${FM_FOCALBOARD_TOKEN:-}" ]; then
-    echo "fm-mattermost-outbox-watch: warning: Focalboard card sync requested for $file but FM_FOCALBOARD_URL or FM_FOCALBOARD_TOKEN is missing; Mattermost posting was still attempted" >&2
+    echo "fm-mattermost-outbox-watch: warning: Focalboard card sync requested for $file but FM_FOCALBOARD_URL or FM_FOCALBOARD_TOKEN is missing; Mattermost post succeeded" >&2
     return 0
   fi
   command -v curl >/dev/null 2>&1 || {
