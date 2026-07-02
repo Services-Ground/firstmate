@@ -300,12 +300,12 @@ focalboard_status_payload() {
 
 focalboard_curl() {
   local method=$1 url=$2 data=$3
-  curl -fsS -X "$method" \
-    -H "Authorization: Bearer $FM_FOCALBOARD_TOKEN" \
-    -H "Content-Type: application/json" \
-    -H "X-Requested-With: XMLHttpRequest" \
-    --data "$data" \
-    "$url" >/dev/null
+  printf 'header = "Authorization: Bearer %s"\n' "$FM_FOCALBOARD_TOKEN" \
+    | curl -K - -fsS -X "$method" \
+        -H "Content-Type: application/json" \
+        -H "X-Requested-With: XMLHttpRequest" \
+        --data "$data" \
+        "$url" >/dev/null
 }
 
 sync_focalboard() {
