@@ -142,6 +142,21 @@ In dry-run, `fm-x-dismiss.sh` records `{request_id, endpoint:"dismiss"}` to the 
 The live answer and follow-up bodies intentionally stay the same shape, including optional `image`; the relay distinguishes them by endpoint, and dismiss stays `{request_id}`.
 These paths need `jq` to build the JSON payload, but they run before token and network checks, so they need neither `FMX_PAIRING_TOKEN` nor `curl`.
 
+## Mattermost outbox watcher (systemd/user/)
+
+`systemd/user/firstmate-mattermost-outbox.path` and `systemd/user/firstmate-mattermost-outbox.service` provide path-activated one-shot delivery of PR results to Mattermost.
+The path unit watches `~/firstmate/data/outbox`; any write triggers the service, which runs `bin/fm-mattermost-outbox-watch.sh --once` with `FM_HOME=~/firstmate` and the default `FM_MATTERMOST_THREAD_NAME=SG AI Coordination`.
+Install them with:
+
+```sh
+systemctl --user enable --now firstmate-mattermost-outbox.path
+```
+
+Each `data/outbox/*.json` entry may include a `target_channel_id` to direct the Mattermost post to a specific channel instead of the fallback thread, a `summary` field, and `board_id`/`card_id`/`new_status` fields for optional Focalboard card sync.
+Set `FM_FOCALBOARD_URL` and `FM_FOCALBOARD_TOKEN` for card sync; missing credentials log a warning and do not block the Mattermost post.
+Durable idempotency markers live under `state/mattermost-outbox/` so duplicate path-unit fires are harmless.
+Use `--watch` mode for manual smoke tests that poll continuously.
+
 ## Environment variables
 
 Runtime tuning via environment variables (defaults shown):
@@ -167,6 +182,13 @@ FMX_DRY_RUN=            # truthy previews X replies and dismissals to state/x-ou
 FMX_X_REPLY_MAX_CHARS=280   # X reply per-tweet split budget; values below 50 clamp to 50
 FMX_X_THREAD_MAX=25     # maximum tweets in one auto-split X reply thread
 FMX_FOLLOWUP_MAX_AGE_SECS=86400   # local window for posting one X completion follow-up
+FM_MATTERMOST_TARGET=          # direct hermes target for fm-mattermost-outbox-watch.sh (e.g. mattermost:<post>:<thread>); unset resolves by name
+FM_MATTERMOST_THREAD_NAME=SG AI Coordination   # fallback thread name to resolve when a JSON entry has no target_channel_id and FM_MATTERMOST_TARGET is unset
+FM_MATTERMOST_OUTBOX_DIR=      # override input dir; defaults to $FM_HOME/data/outbox
+FM_MATTERMOST_STATE_DIR=       # override durable state dir; defaults to $FM_HOME/state/mattermost-outbox
+FM_MATTERMOST_POLL=5           # poll interval in seconds for fm-mattermost-outbox-watch.sh --watch mode
+FM_FOCALBOARD_URL=             # Focalboard API base URL for fm-mattermost-outbox-watch.sh card sync
+FM_FOCALBOARD_TOKEN=           # Focalboard bearer token; missing or empty disables card sync with a warning
 FM_LOCK_STALE_AFTER=2   # seconds before dead-pid lock records can be reclaimed; mid-acquire locks keep at least 2s grace
 FM_GUARD_GRACE=300      # seconds before guard warnings and arm health checks treat a watcher beacon as stale
 FM_ARM_CONFIRM_TIMEOUT=10   # seconds fm-watch-arm waits to confirm a fresh watcher before reporting FAILED
