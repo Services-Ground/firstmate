@@ -29,8 +29,8 @@ THREAD_NAME="${FM_MATTERMOST_THREAD_NAME:-SG AI Coordination}"
 POLL="${FM_MATTERMOST_POLL:-5}"
 DEFAULT_TARGET=
 
-_LOCK_PATH=
-trap 'if [ -n "$_LOCK_PATH" ]; then rmdir "$_LOCK_PATH" 2>/dev/null || true; rm -f "${_LOCK_PATH}.pid" 2>/dev/null || true; fi' EXIT
+LOCK_FD=
+trap '[ -n "${LOCK_FD:-}" ] && eval "exec ${LOCK_FD}>&-" 2>/dev/null || true' EXIT
 
 usage() {
   cat >&2 <<'EOF'
@@ -62,26 +62,16 @@ mkdir_p_state() {
 }
 
 with_lock() {
-  local lock="$STATE/lock" n=0 pid
   mkdir_p_state || return 1
-  while ! mkdir "$lock" 2>/dev/null; do
-    n=$((n + 1))
-    if [ "$n" -ge 20 ]; then
-      echo "fm-mattermost-outbox-watch: another scan is still running" >&2
-      return 1
-    fi
-    pid=$(cat "${lock}.pid" 2>/dev/null) || true
-    if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
-      rmdir "$lock" 2>/dev/null || true
-    fi
-    sleep 0.1
-  done
-  printf '%s\n' "$$" > "${lock}.pid"
-  _LOCK_PATH="$lock"
+  exec {LOCK_FD}<>"$STATE/lock.flock"
+  if ! flock -w 2 "$LOCK_FD"; then
+    echo "fm-mattermost-outbox-watch: another scan is still running" >&2
+    return 1
+  fi
   scan_once; local rc=$?
-  rmdir "$lock" 2>/dev/null || true
-  rm -f "${lock}.pid"
-  _LOCK_PATH=
+  flock -u "$LOCK_FD"
+  eval "exec ${LOCK_FD}>&-"
+  LOCK_FD=
   return "$rc"
 }
 
@@ -259,7 +249,7 @@ post_mattermost() {
     "url=$url" \
     "risk=$risk" \
     "target=$target" \
-    "source=$file"
+    "source=$file" || return 1
 }
 
 focalboard_api_base() {
@@ -347,7 +337,7 @@ sync_focalboard() {
       "url=$url" \
       "board_id=$board_id" \
       "card_id=$card_id" \
-      "source=$file"
+      "source=$file" || return 1
   fi
 
   [ -n "$new_status" ] || return 0
@@ -364,7 +354,7 @@ sync_focalboard() {
     "board_id=$board_id" \
     "card_id=$card_id" \
     "new_status=$new_status" \
-    "source=$file"
+    "source=$file" || return 1
 }
 
 post_pr() {
