@@ -377,7 +377,8 @@ post_pr() {
   risk=$(json_risk "$file" 2>/dev/null) || risk=unknown
   summary=$(json_summary "$file" 2>/dev/null) || summary=
   post_mattermost "$file" "$url" "$risk" "$summary" || return 1
-  sync_focalboard "$file" "$url" "$risk" "$summary" || return 1
+  sync_focalboard "$file" "$url" "$risk" "$summary" || \
+    echo "fm-mattermost-outbox-watch: Focalboard sync failed for $file (non-fatal)" >&2
 }
 
 scan_once() {
