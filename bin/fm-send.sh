@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Send one line of literal text to a crewmate window, then Enter.
-# Usage: fm-send.sh <window> <text...>
+# Usage: fm-send.sh [--strict-ack] <window> <text...>
 #   <window> may be a bare firstmate window name (fm-xyz), resolved through
 #   this home's state/<id>.meta, or explicit session:window.
 # Special keys instead of text: fm-send.sh <window> --key Escape   (or Enter, C-c, ...)
@@ -27,6 +27,10 @@
 # footer appears, so an immediate peek would otherwise see the stale idle pane.
 # The pause is fm-send-only; the shared submit core (used by the away-mode daemon,
 # which only needs "submitted") does not pay it, and the --key path is unaffected.
+# --strict-ack is for automated callers. It succeeds only when the post-submit
+# composer is positively readable and empty. An unknown or still-pending composer
+# exits 3 and prints "uncertain"; a literal send failure exits 2 and prints
+# "failed-before-send". The default human-steering behavior remains lenient.
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -57,6 +61,17 @@ resolve() {
     *) tmux list-windows -a -F '#{session_name}:#{window_name}' | grep -m1 ":$1\$" \
          || { echo "error: no window named $1" >&2; exit 1; } ;;
   esac
+}
+
+STRICT_ACK=0
+if [ "${1:-}" = "--strict-ack" ]; then
+  STRICT_ACK=1
+  shift
+fi
+
+[ "$#" -ge 2 ] || {
+  echo "usage: fm-send.sh [--strict-ack] <window> <text...>" >&2
+  exit 2
 }
 
 RAW_TARGET=$1
@@ -118,11 +133,20 @@ else
   case "$verdict" in
     pending)
       echo "error: text not submitted to $T (Enter swallowed; text left in composer)" >&2
+      if [ "$STRICT_ACK" -eq 1 ]; then printf 'uncertain\n'; exit 3; fi
       exit 1
       ;;
     send-failed)
       echo "error: text not sent to $T (tmux send-keys failed)" >&2
+      if [ "$STRICT_ACK" -eq 1 ]; then printf 'failed-before-send\n'; exit 2; fi
       exit 1
+      ;;
+    unknown)
+      if [ "$STRICT_ACK" -eq 1 ]; then
+        echo "error: submission acknowledgement from $T is unreadable" >&2
+        printf 'uncertain\n'
+        exit 3
+      fi
       ;;
   esac
   # Submit landed (verdict was not pending/send-failed). The cleared composer only
@@ -131,4 +155,5 @@ else
   # crewmate actually working instead of the stale idle pane. FM_SEND_SETTLE=0
   # disables it. Scoped to this path only, never the shared submit core.
   [ "${FM_SEND_SETTLE:-1}" = 0 ] || sleep "${FM_SEND_SETTLE:-1}"
+  [ "$STRICT_ACK" -eq 0 ] || printf 'sent\n'
 fi

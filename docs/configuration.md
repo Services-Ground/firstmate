@@ -142,20 +142,12 @@ In dry-run, `fm-x-dismiss.sh` records `{request_id, endpoint:"dismiss"}` to the 
 The live answer and follow-up bodies intentionally stay the same shape, including optional `image`; the relay distinguishes them by endpoint, and dismiss stays `{request_id}`.
 These paths need `jq` to build the JSON payload, but they run before token and network checks, so they need neither `FMX_PAIRING_TOKEN` nor `curl`.
 
-## Mattermost outbox watcher (systemd/user/)
+## Firstmate Bridge outbox
 
-`systemd/user/firstmate-mattermost-outbox.path` and `systemd/user/firstmate-mattermost-outbox.service` provide path-activated one-shot delivery of PR results to Mattermost.
-The path unit watches `~/firstmate/data/outbox`; any write triggers the service, which runs `bin/fm-mattermost-outbox-watch.sh --once` with `FM_HOME=~/firstmate` and the default `FM_MATTERMOST_THREAD_NAME=SG AI Coordination`.
-Install them with:
-
-```sh
-systemctl --user enable --now firstmate-mattermost-outbox.path
-```
-
-Each `data/outbox/*.json` entry may include a `target_channel_id` to direct the Mattermost post to a specific channel instead of the fallback thread, a `summary` field that prepends a `Summary:` line to the Mattermost message and any Focalboard comment, and `board_id`/`card_id`/`new_status` fields for optional Focalboard card sync.
-Set `FM_FOCALBOARD_URL` and `FM_FOCALBOARD_TOKEN` for card sync; missing credentials log a warning and do not block the Mattermost post.
-Durable idempotency markers live under `state/mattermost-outbox/` so duplicate path-unit fires are harmless.
-Use `--watch` mode for manual smoke tests that poll continuously.
+Phase A bridge results use the strict versioned contract and hardened Hermes relay documented in [firstmate-bridge.md](firstmate-bridge.md).
+The old `systemd/user/firstmate-mattermost-outbox.*` watcher is retained only as rollback-era source and must not be newly enabled.
+It accepts legacy aliases, cannot resolve the live board status safely, and is superseded by `bin/sg-firstmate-relay.py`.
+Masking the remaining legacy path unit is an Abdul-gated apply item, not an automatic repository action.
 
 ## Environment variables
 
@@ -205,6 +197,13 @@ GROK_HOME=              # optional Grok config home for firstmate's global grok 
 FM_SEND_RETRIES=3       # fm-send Enter-retry attempts after typing the line once
 FM_SEND_SLEEP=0.4       # seconds between fm-send submit checks
 FM_SEND_SETTLE=1        # seconds fm-send waits after a successful text submit; 0 disables
+FM_BRIDGE_STATE_DIR=    # injector lock, kill switch, ledger, and credential-free logs; defaults to $FM_HOME/state/bridge
+FM_BRIDGE_DATA_DIR=     # emitted versioned dispatch metadata; defaults to $FM_HOME/data/bridge
+FM_BRIDGE_KILL_SWITCH=  # defaults to $FM_HOME/state/bridge/PAUSED; file presence stops before claim/send
+FM_BRIDGE_PROJECTS_FILE= # exact registered-project allowlist source; defaults to $FM_HOME/data/projects.md
+FM_RELAY_OUTBOX=        # hardened relay input; defaults to /home/hp/firstmate/data/outbox
+FM_RELAY_STATE=         # hardened relay delivery markers and lock
+FM_RELAY_POLICY=        # channel policy containing Agentic Development and project channel ids
 # sub-supervisor (bin/fm-supervise-daemon.sh); presence-gated via /afk
 FM_SUPERVISOR_TARGET=firstmate:0   # supervisor tmux target (override; auto-discovers from $TMUX_PANE)
 FM_INJECT_SKIP=heartbeat           # |-prefixes force-self-handled bypassing classification; empty disables

@@ -17,7 +17,11 @@ Each file also starts with a short header comment.
 | `fm-config-push.sh`      | Config-only mid-session push of declared inheritable local config into live secondmate homes; reports each item as pushed, unchanged, skipped, or error without fast-forwarding tracked files or nudging agents |
 | `fm-project-mode.sh`     | Resolve a project's delivery mode and `+yolo` flag from `data/projects.md`                                          |
 | `fm-merge-local.sh`      | Fast-forward a `local-only` project's local default branch after approval                                           |
-| `fm-mattermost-outbox-watch.sh` | Scan `data/outbox/*.json` for new PR entries, post summary/PR/risk to `target_channel_id` or the SG AI Coordination fallback through `hermes`, and optionally comment on or move a Focalboard card using `FM_FOCALBOARD_URL` and `FM_FOCALBOARD_TOKEN`; durable `state/mattermost-outbox/` markers avoid duplicate posts and card updates |
+| `fm-outbox-validate.py`  | Validate one versioned Firstmate Bridge dispatch or result root object, including exact live board status labels    |
+| `fm-bridge-inject.sh`    | Claim one bridge card durably, enforce the kill switch, exact repo allowlist, live-task cap, one-card Phase A cap, verified captain target, empty composer, and strict one-line acknowledgement |
+| `sg-firstmate-kenza-trigger.py` | Run the manual one-card Kenza Department Driver gate and call the injector once, moving the card to `AI Working` only after durable `sent` |
+| `sg-firstmate-relay.py`  | Canonical deployable Hermes relay with root-contract validation, board preflight, recreated-result dedupe, resumable post/card sync, and full-property-map Focalboard writes |
+| `fm-mattermost-outbox-watch.sh` | Legacy rollback-era watcher retained for compatibility; do not newly enable it because the strict Phase A contract and hardened Hermes relay supersede its alias-based parsing and raw status sync |
 | `fm-review-diff.sh`      | Review a crewmate branch against the authoritative base, with optional `--stat` output                              |
 | `fm-marker-lib.sh`       | Shared from-firstmate request marker and detector sourced by `fm-send.sh`, `fm-brief.sh`, and tests                 |
 | `fm-watch-arm.sh`        | Verified per-home watcher re-arm; reports `started`, `healthy`, or `FAILED`; `--restart` relaunches only this home's watcher |
@@ -31,7 +35,7 @@ Each file also starts with a short header comment.
 | `fm-wake-drain.sh`       | Atomically drain queued watcher wakes before handling supervision work, then run the watcher-liveness guard         |
 | `fm-wake-lib.sh`         | Shared durable wake queue and portable lock helpers sourced by the watcher, drain, arm, guard, and daemon          |
 | `fm-classify-lib.sh`     | Shared captain-relevant wake classifier sourced by the watcher and daemon, plus the watcher's provably-working predicate |
-| `fm-send.sh`             | Send one verified literal line (or `--key Escape`) to a direct-report window; exits non-zero on confirmed swallowed Enter; bare `kind=secondmate` targets are marked as from-firstmate; slash commands and codex `$...` skill invocations get popup-settle before Enter; text sends pause `FM_SEND_SETTLE` seconds after success |
+| `fm-send.sh`             | Send one verified literal line (or `--key Escape`) to a direct-report window; `--strict-ack` requires a positively readable empty composer and distinguishes uncertain from failed-before-send; bare `kind=secondmate` targets are marked as from-firstmate; slash commands and codex `$...` skill invocations get popup-settle before Enter; text sends pause `FM_SEND_SETTLE` seconds after success |
 | `fm-tmux-lib.sh`         | Shared tmux pane primitives for busy detection, dim-ghost-aware and border-aware composer detection, and verified submit retry |
 | `fm-peek.sh`             | Print a bounded tail of a crewmate pane                                                                             |
 | `fm-pr-check.sh`         | Record `pr=` and GitHub's `pr_head=` when available for a PR-ready task, then arm the watcher's merge poll          |
