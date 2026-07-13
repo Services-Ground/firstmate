@@ -123,7 +123,7 @@ patterns = [
     r"\b(?:delete|destroy|wipe|purge|drop|truncate)(?:s|d|ing)?\b",
     r"\bforce[- ]?push\b", r"\breset\s+--hard\b",
 ]
-negated = re.compile(r"(?:\bnever\b|\bdo not\b|\bdon't\b|\bmust not\b|\bwithout\b|\bno\b).{0,48}$")
+negated = re.compile(r"(?:(?:\bnever\b|\bdo not\b|\bdon't\b|\bmust not\b|\bno\b).{0,48}|\bwithout\b.{0,16})$")
 for pattern in patterns:
     for match in re.finditer(pattern, text):
         if not negated.search(text[max(0, match.start()-64):match.start()]):
@@ -221,9 +221,10 @@ fail_after_claim() {
 
 tmux has-session -t fm 2>/dev/null || fail_after_claim "tmux session fm is absent"
 
+command -v pstree >/dev/null 2>&1 || fail_after_claim "pstree is required but not installed (Ubuntu/WSL2: sudo apt-get install psmisc)"
+
 process_has_codex() {
   local pid=$1
-  command -v pstree >/dev/null 2>&1 || return 1
   pstree -ap "$pid" 2>/dev/null | grep -Eq '(^|[ ,/])codex([ ,)]|$)|node[^,]*,/usr/bin/codex'
 }
 

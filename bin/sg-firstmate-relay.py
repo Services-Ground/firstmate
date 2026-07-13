@@ -165,7 +165,9 @@ class Relay:
                     if OPAQUE_ID.fullmatch(resolved):
                         return resolved, f"policy:{key}"
             slug = re.sub(r"[^a-z0-9-]+", "-", normalized).strip("-")
-            team_id = str(self.policy.get("team_id") or "371satrwgff39fsg9eqrqcdr4c")
+            team_id = str(self.policy.get("team_id") or "")
+            if not team_id:
+                raise ContractError("policy file is missing team_id; cannot resolve target_channel by name")
             status, value = self.api(
                 "GET", f"/api/v4/teams/{team_id}/channels/name/{urllib.parse.quote(slug)}"
             )
@@ -378,6 +380,7 @@ class Relay:
             key = self.delivery_key(record)
             row["delivery_key"] = key
             if record["mode"] == "scout":
+                self.mark_dispatch_completed(record)
                 moved = self.move_unique(path, self.done)
                 row.update({"status": "skipped-scout", "moved_to": str(moved)})
                 self.append_ledger(row)

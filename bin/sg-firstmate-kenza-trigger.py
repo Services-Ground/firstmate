@@ -68,10 +68,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max", type=int, default=1)
     parser.add_argument(
         "--gate-command",
-        default=os.environ.get(
-            "FM_BRIDGE_DRIVER_GATE",
-            "/mnt/c/Users/HP/Claude/Projects/Agentic Engineering/command-center/00-setup/sg_driver_gate.py",
-        ),
+        default=os.environ.get("FM_BRIDGE_DRIVER_GATE"),
     )
     parser.add_argument(
         "--injector",
@@ -144,6 +141,11 @@ class Trigger:
         return {}, STATUS_FIELD
 
     def gate(self) -> None:
+        if not self.args.gate_command:
+            raise SystemExit(
+                "Department Driver gate command is not configured; "
+                "set FM_BRIDGE_DRIVER_GATE or pass --gate-command"
+            )
         command = [
             self.args.gate_command,
             "--board-id",
