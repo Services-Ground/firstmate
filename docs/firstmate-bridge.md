@@ -73,6 +73,9 @@ The injector checks it before taking a card claim and again while holding its in
 Claims and delivery outcomes are appended to `$FM_HOME/state/bridge/dispatch-ledger.jsonl` with `claimed`, `sent`, `uncertain`, `failed-before-send`, and `completed` states.
 An uncertain result is never automatically retyped.
 
+Before the claim is taken, the brief is scanned for affirmative protected-intent patterns: deploy, merge, prod/production, main, dns, secrets/credentials, destructive operations (delete, destroy, wipe, purge, drop, truncate), force-push, and hard reset.
+A negated context (for example "never deploy" or "do not merge") is allowed; an affirmative occurrence exits with `failed-before-send` before any claim is recorded in the ledger.
+
 The injector counts live task metadata whose recorded tmux target still exists and refuses the eleventh task.
 It also permits only one active bridge card in Phase A.
 It requires a unique Codex captain pane in session `fm`, preferring a verified `fm:captain` window and otherwise requiring the unique pane rooted at `$FM_HOME` with a Codex descendant.
@@ -90,6 +93,7 @@ The Focalboard patch carries the full existing property map.
 ## Relay behavior
 
 The relay takes an inter-process lock and validates the contract before any Mattermost post.
+It posts to Mattermost as Ron and patches Focalboard as Amina; each identity loads its token from the Hermes profile environment independently.
 For card-bound results it fetches the board and card and resolves the exact live status option before posting.
 Bad boards, missing cards, and unknown status labels therefore cannot leave a posted-but-unsynced handoff.
 
