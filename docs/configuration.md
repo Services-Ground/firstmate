@@ -221,7 +221,7 @@ FM_RELAY_HERMES_HOME=   # Hermes home from which the relay loads credentials; de
 FM_RELAY_LEDGER=        # relay delivery audit log; defaults to $FM_RELAY_HERMES_HOME/sg-ops/firstmate-relay-ledger.jsonl
 FM_RELAY_BASE_URL=      # Mattermost base URL for the relay; defaults to MATTERMOST_URL from Hermes .env
 FM_RELAY_RON_TOKEN=     # Ron Mattermost token for channel posts; defaults to MATTERMOST_TOKEN from Hermes .env
-FM_RELAY_AMINA_TOKEN=   # Amina Mattermost token for Focalboard card sync; defaults to Ron token when absent
+FM_RELAY_AMINA_TOKEN=   # Amina Mattermost token for Focalboard card sync; defaults to MATTERMOST_TOKEN from Hermes amina profile
 FM_BRIDGE_DISPATCH_LEDGER= # relay-side path to the injector dispatch ledger for completed-state appends; defaults to /home/hp/firstmate/state/bridge/dispatch-ledger.jsonl
 # sub-supervisor (bin/fm-supervise-daemon.sh); presence-gated via /afk
 FM_SUPERVISOR_TARGET=firstmate:0   # supervisor tmux target (override; auto-discovers from $TMUX_PANE)
