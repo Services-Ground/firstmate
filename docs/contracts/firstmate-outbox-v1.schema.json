@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Services-Ground/firstmate/docs/contracts/firstmate-outbox-v1.schema.json",
+  "title": "Firstmate Bridge outbox contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_type",
+    "task_id",
+    "card_id",
+    "repo",
+    "mode"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "record_type": {"enum": ["dispatch", "result"]},
+    "task_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,79}$"},
+    "card_id": {"type": "string", "pattern": "^[a-z0-9]{27}$"},
+    "repo": {"enum": ["firstmate", "bracket_report", "lead-ops-agent"]},
+    "mode": {"enum": ["ship", "scout"]},
+    "brief_path": {"type": "string", "minLength": 1},
+    "canonical_thread": {"type": "string", "minLength": 1},
+    "pr_url": {
+      "type": "string",
+      "pattern": "^https://github\\.com/[^/\\s]+/[^/\\s]+/pull/[1-9][0-9]*(?:[/?#][^\\s]*)?$"
+    },
+    "risk": {"type": "string", "minLength": 1},
+    "summary": {"type": "string", "minLength": 1},
+    "target_channel_id": {"type": "string", "pattern": "^[a-z0-9]{26}$"},
+    "target_channel": {"type": "string", "minLength": 1},
+    "board_id": {"type": "string", "pattern": "^[a-z0-9]{27}$"},
+    "new_status": {"type": "string", "minLength": 1},
+    "abdul_gated_apply": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"record_type": {"const": "dispatch"}},
+        "required": ["record_type"]
+      },
+      "then": {"required": ["brief_path", "canonical_thread"]}
+    },
+    {
+      "if": {
+        "properties": {
+          "record_type": {"const": "result"},
+          "mode": {"const": "ship"}
+        },
+        "required": ["record_type", "mode"]
+      },
+      "then": {"required": ["pr_url", "risk", "summary"]}
+    },
+    {
+      "if": {
+        "properties": {
+          "record_type": {"const": "result"},
+          "mode": {"const": "scout"}
+        },
+        "required": ["record_type", "mode"]
+      },
+      "then": {
+        "not": {"required": ["pr_url"]}
+      }
+    },
+    {
+      "if": {"required": ["board_id"]},
+      "then": {"required": ["new_status"]}
+    },
+    {
+      "if": {"required": ["new_status"]},
+      "then": {"required": ["board_id"]}
+    }
+  ]
+}

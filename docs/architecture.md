@@ -135,6 +135,25 @@ For preview testing, `FMX_DRY_RUN` makes `fm-x-reply.sh` and `fm-x-dismiss.sh` s
 Attached images are recorded as compact `{media_type, bytes, source_path}` metadata in dry-run instead of base64 bytes.
 The watcher, wake queue, arm wrapper, and afk daemon are unchanged; X mode is layered on top through the existing check mechanism.
 
+## Firstmate Bridge
+
+The Firstmate Bridge provides a programmatic task handoff into the running captain so an external trigger (Kenza, in Phase A) can route a code card without a human intermediary.
+It is layered on the existing fleet: the injector sends one canonical line to the captain's pane through `bin/fm-send.sh --strict-ack`, the captain picks it up as a normal firstmate task, and the completed result returns through the hardened Hermes relay.
+
+`bin/fm-bridge-inject.sh` is fail-closed before any send.
+It rejects briefs that contain affirmative protected-intent keywords (deploy, merge, prod, main, dns, secrets, credentials, destructive operations, force-push, hard reset); negated forms such as "never deploy" are allowed.
+It verifies the repo against an exact registered-project allowlist, checks the kill switch (`$FM_HOME/state/bridge/PAUSED`) before and after acquiring its inter-process lock, refuses when more than ten live tasks are in flight, and blocks a second bridge card while the first is still active.
+The dispatch ledger at `state/bridge/dispatch-ledger.jsonl` records each card through `claimed`, `sent`, `uncertain`, `failed-before-send`, and `completed` states; an uncertain result is never automatically retyped.
+
+`bin/sg-firstmate-relay.py` is the return path.
+It validates each outbox file against the versioned contract before any network write, fetches the live board and card to resolve the exact status label, and uses a two-phase delivery marker so retries resume Focalboard card sync without reposting to Mattermost.
+It posts as Ron and patches Focalboard as Amina, each using its own Hermes-profile token.
+Scout results are archived without a channel post; ship results produce one channel post and one card status move.
+
+All live infrastructure changes are Abdul-gated apply items.
+No build or test step installs, enables, or restarts any Hermes service.
+See `docs/firstmate-bridge.md` for the full contract, injector safety rules, and apply checklist.
+
 ## Project memory belongs to projects
 
 Durable project-intrinsic agent knowledge lives in each project's committed `AGENTS.md`, with `CLAUDE.md` as a symlink.

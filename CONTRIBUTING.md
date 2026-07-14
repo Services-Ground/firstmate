@@ -58,6 +58,7 @@ Check and test the toolbelt before pushing:
 
 ```sh
 bash -n bin/*.sh                          # syntax-check the toolbelt
+python3 -m py_compile bin/*.py tests/firstmate_bridge_test.py   # syntax-check bridge Python modules
 shellcheck bin/*.sh tests/*.sh            # lint the toolbelt and behavior tests; CI enforces this
 for test_script in tests/*.test.sh; do bash "$test_script"; done   # behavior tests, matching CI and no-mistakes commands.test
 tests/fm-wake-queue.test.sh               # durable wake queue losslessness, catch-up, double-drain, duplicate-collapse, and drain liveness guard tests
@@ -75,6 +76,7 @@ tests/fm-grok-harness.test.sh             # grok adapter spawn hook, token guard
 tests/fm-fleet-sync.test.sh               # project clone refresh: safe detached recovery, STUCK drift reports, benign skips, and bootstrap relay
 tests/fm-x-mode.test.sh                   # X-mode poll, inbox context round-trip, reply threading, dismiss, dry-run preview, and .env-presence activation tests
 tests/fm-mattermost-outbox-watch.test.sh  # Mattermost PR outbox scan, target selection, Focalboard sync construction, duplicate suppression, and safe failures
+tests/firstmate-bridge.test.sh            # Phase A bridge contract (schema, validator), injector safety (kill switch, allowlist, caps, composer, strict-ack), Kenza trigger gate and dedupe, relay preflight, two-phase delivery, recreated-result dedupe, and full rejection matrix; drives tests/firstmate_bridge_test.py
 tests/fm-tangle-guard.test.sh             # primary-checkout tangle detection and spawn/brief isolation tests
 tests/fm-spawn-batch.test.sh              # batch dispatch and FM_HOME project-path scoping tests
 tests/fm-spawn-dispatch-profile.test.sh   # concrete dispatch profile flags: active-profile backstop, harness/model/effort meta, launch templates, batch forwarding, and secondmate exemption

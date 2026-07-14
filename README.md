@@ -143,6 +143,7 @@ Agent-only reference skills live under `.agents/skills/` and are loaded by first
 
 - [docs/architecture.md](docs/architecture.md) - how the crew, supervision, worktrees, secondmates, and project modes work.
 - [docs/configuration.md](docs/configuration.md) - environment variables, `FM_HOME`, optional X mode, the files you set, and harness support.
+- [docs/firstmate-bridge.md](docs/firstmate-bridge.md) - Phase A's versioned outbox contract, strict injector, Kenza trigger, hardened relay, and Abdul-gated apply boundary.
 - [docs/scripts.md](docs/scripts.md) - the `bin/` toolbelt reference.
 - [`AGENTS.md`](AGENTS.md) - firstmate's full operating manual for the orchestrator agent.
 - [CONTRIBUTING.md](CONTRIBUTING.md) - how to contribute, including the dev/test commands.
