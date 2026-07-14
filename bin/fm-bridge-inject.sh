@@ -98,7 +98,10 @@ awk -v name="$repo" '$1=="-" && $2==name { found=1 } END { exit !found }' "$PROJ
 }
 if [ -n "$target_channel" ]; then single_line "$target_channel" || exit 2; fi
 if [ -n "$target_channel_id" ]; then
-  printf '%s' "$target_channel_id" | grep -Eq '^[a-z0-9]{26}$' || exit 2
+  printf '%s' "$target_channel_id" | grep -Eq '^[a-z0-9]{26}$' || {
+    echo "fm-bridge-inject: target_channel_id must be a 26-character Mattermost channel id" >&2
+    exit 2
+  }
 fi
 if [ -n "$board_id" ] || [ -n "$new_status" ]; then
   printf '%s' "$board_id" | grep -Eq '^[a-z0-9]{27}$' || {
@@ -280,6 +283,7 @@ python3 "${validator_args[@]}" >/dev/null || fail_after_claim "dispatch metadata
 mv "$tmp_metadata" "$metadata" || fail_after_claim "cannot publish dispatch metadata"
 
 line="ahoy $mode: read and execute $brief_path; repo=$repo; card=$card_id; contract=$metadata"
+[ "$mode" = "ship" ] && line="$line; branch=fm/$task_id; deliver=PR"
 single_line "$line" || fail_after_claim "canonical dispatch line contains control characters"
 
 set +e

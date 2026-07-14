@@ -330,7 +330,7 @@ class FakeTrigger(trigger_module.Trigger):
         self.injector_state = injector_state
         self.task_exists_value = task_exists
         self.injector_calls = 0
-        self.move_calls = 0
+        self.patches = []
         self.board = {
             "cardProperties": [
                 {
@@ -372,14 +372,23 @@ class FakeTrigger(trigger_module.Trigger):
     def fetch_board(self):
         return self.board, [self.card]
 
+    def api(self, method, path, data=None):
+        if method == "PATCH" and path.endswith(f"/boards/{BOARD}/blocks/{CARD}"):
+            self.patches.append(data)
+            updated_props = ((data or {}).get("updatedFields") or {}).get("properties") or {}
+            fields = dict(self.card.get("fields") or {})
+            props_copy = dict(fields.get("properties") or {})
+            props_copy.update(updated_props)
+            fields["properties"] = props_copy
+            self.card = {**self.card, "fields": fields}
+            return 200, self.card
+        if method == "GET" and path.endswith(f"/boards/{BOARD}/blocks"):
+            return 200, [self.card]
+        return 404, {"path": path}
+
     def call_injector_once(self, card, options):
         self.injector_calls += 1
         return {"state": self.injector_state, "card_id": CARD}
-
-    def move_to_working(self, card, options, property_id):
-        if self.injector_state != "sent":
-            raise AssertionError("card move attempted before durable sent")
-        self.move_calls += 1
 
 
 class TriggerTests(unittest.TestCase):
@@ -389,7 +398,13 @@ class TriggerTests(unittest.TestCase):
             result = trigger.execute()
             self.assertEqual(result["state"], "sent")
             self.assertEqual(trigger.injector_calls, 1)
-            self.assertEqual(trigger.move_calls, 1)
+            self.assertEqual(len(trigger.patches), 1)
+            patch = trigger.patches[0]
+            self.assertIn("updatedFields", patch)
+            self.assertNotIn("id", patch)
+            self.assertNotIn("type", patch)
+            patch_props = patch["updatedFields"]["properties"]
+            self.assertEqual(patch_props.get("sg_status"), "sg_status_ai_working")
             self.assertEqual(result["idempotency_key"], f"firstmate-bridge:{CARD}")
             self.assertEqual(result["max"], 1)
 
@@ -399,7 +414,7 @@ class TriggerTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 trigger.execute()
             self.assertEqual(trigger.injector_calls, 1)
-            self.assertEqual(trigger.move_calls, 0)
+            self.assertEqual(trigger.patches, [])
 
     def test_existing_task_dedupes_before_injector(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -407,7 +422,7 @@ class TriggerTests(unittest.TestCase):
             result = trigger.execute()
             self.assertEqual(result["state"], "deduped-existing-task")
             self.assertEqual(trigger.injector_calls, 0)
-            self.assertEqual(trigger.move_calls, 0)
+            self.assertEqual(trigger.patches, [])
 
     def test_trigger_rejection_matrix(self):
         with tempfile.TemporaryDirectory() as directory:

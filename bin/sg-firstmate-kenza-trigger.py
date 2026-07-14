@@ -279,19 +279,29 @@ class Trigger:
         options: dict[str, str],
         property_id: str,
     ) -> None:
-        updated = dict(card)
-        fields = dict(updated.get("fields") or {})
-        properties = dict(fields.get("properties") or {})
-        properties[property_id] = options[STATUS_WORKING]
-        fields["properties"] = properties
-        updated["fields"] = fields
         status, value = self.api(
             "PATCH",
             f"/plugins/focalboard/api/v2/boards/{self.args.board_id}/blocks/{self.args.card_id}",
-            updated,
+            {"updatedFields": {"properties": {property_id: options[STATUS_WORKING]}}},
         )
         if status not in (200, 201):
             raise RuntimeError(f"AI Working update failed: HTTP {status}: {value}")
+        status2, blocks = self.api(
+            "GET",
+            f"/plugins/focalboard/api/v2/boards/{self.args.board_id}/blocks",
+        )
+        if status2 != 200 or not isinstance(blocks, list):
+            raise RuntimeError(f"AI Working read-back failed: HTTP {status2}")
+        refreshed = next(
+            (b for b in blocks if b.get("id") == self.args.card_id), None
+        )
+        if refreshed is None:
+            raise RuntimeError("AI Working read-back: card not found after PATCH")
+        actual = ((refreshed.get("fields") or {}).get("properties") or {}).get(property_id)
+        if actual != options[STATUS_WORKING]:
+            raise RuntimeError(
+                f"AI Working did not persist: got {actual!r}, want {options[STATUS_WORKING]!r}"
+            )
 
     def execute(self) -> dict[str, Any]:
         if not self.base or not self.token:
