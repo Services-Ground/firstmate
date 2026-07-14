@@ -63,6 +63,13 @@ BOARD_FIXTURE = {
 }
 
 
+def write_projects(path: Path, *repos: str) -> None:
+    path.write_text(
+        "".join(f"- {repo} [no-mistakes] - bridge test\n" for repo in repos),
+        encoding="utf-8",
+    )
+
+
 def ship_record(**updates):
     record = {
         "schema_version": "1.0",
@@ -83,8 +90,20 @@ def ship_record(**updates):
 
 
 class ContractTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.projects_file = Path(self.temp.name) / "projects.md"
+        write_projects(self.projects_file, "firstmate", "lead-ops-agent")
+
+    def tearDown(self):
+        self.temp.cleanup()
+
     def test_valid_ship_and_dispatch(self):
-        validate_record(ship_record(), status_options=["QA / Review"])
+        validate_record(
+            ship_record(),
+            status_options=["QA / Review"],
+            projects_file=self.projects_file,
+        )
         validate_record(
             {
                 "schema_version": "1.0",
@@ -95,12 +114,37 @@ class ContractTests(unittest.TestCase):
                 "mode": "scout",
                 "brief_path": "/tmp/brief.md",
                 "canonical_thread": "thread-1",
-            }
+            },
+            projects_file=self.projects_file,
         )
 
     def assert_rejected(self, record, options=None):
         with self.assertRaises(ContractError):
-            validate_record(record, status_options=options)
+            validate_record(
+                record,
+                status_options=options,
+                projects_file=self.projects_file,
+            )
+
+    def test_registry_controls_repo_allowlist_without_code_changes(self):
+        write_projects(self.projects_file, "firstmate", "symbol_lookup")
+        validate_record(
+            ship_record(repo="symbol_lookup"),
+            status_options=["QA / Review"],
+            projects_file=self.projects_file,
+        )
+        self.assert_rejected(
+            ship_record(repo="not-registered"),
+            ["QA / Review"],
+        )
+        write_projects(self.projects_file, "symbol_lookup")
+        self.assert_rejected(ship_record(), ["QA / Review"])
+
+    def test_missing_and_empty_registry_fail_closed(self):
+        self.projects_file.unlink()
+        self.assert_rejected(ship_record(), ["QA / Review"])
+        self.projects_file.touch()
+        self.assert_rejected(ship_record(), ["QA / Review"])
 
     def test_rejection_matrix(self):
         self.assert_rejected([ship_record()], ["QA / Review"])
@@ -121,7 +165,11 @@ class ContractTests(unittest.TestCase):
     def test_scout_is_explicitly_non_pr(self):
         scout = ship_record(mode="scout")
         del scout["pr_url"]
-        validate_record(scout, status_options=["QA / Review"])
+        validate_record(
+            scout,
+            status_options=["QA / Review"],
+            projects_file=self.projects_file,
+        )
         self.assert_rejected({**scout, "pr_url": "https://github.com/a/b/pull/1"}, ["QA / Review"])
 
 
@@ -134,6 +182,8 @@ class FakeRelay(relay_module.Relay):
         self.ledger = root / "relay.jsonl"
         self.policy_path = root / "policy.json"
         self.dispatch_ledger = root / "dispatch.jsonl"
+        self.projects_file = root / "projects.md"
+        write_projects(self.projects_file, "firstmate", "lead-ops-agent")
         self.base = "https://mattermost.test"
         self.ron_token = "ron-test-token"
         self.amina_token = "amina-test-token"
@@ -308,7 +358,13 @@ class RelayTests(unittest.TestCase):
 
 
 class FakeTrigger(trigger_module.Trigger):
-    def __init__(self, root: Path, injector_state: str = "sent", task_exists: bool = False):
+    def __init__(
+        self,
+        root: Path,
+        injector_state: str = "sent",
+        task_exists: bool = False,
+        drop_property_on_readback: bool = False,
+    ):
         self.args = argparse.Namespace(
             card_id=CARD,
             repo="firstmate",
@@ -333,6 +389,7 @@ class FakeTrigger(trigger_module.Trigger):
         self.task_exists_value = task_exists
         self.injector_calls = 0
         self.patches = []
+        self.drop_property_on_readback = drop_property_on_readback
         self.board = BOARD_FIXTURE
         self.card = {
             "id": CARD,
@@ -367,9 +424,9 @@ class FakeTrigger(trigger_module.Trigger):
             self.patches.append(data)
             updated_props = ((data or {}).get("updatedFields") or {}).get("properties") or {}
             fields = dict(self.card.get("fields") or {})
-            props_copy = dict(fields.get("properties") or {})
-            props_copy.update(updated_props)
-            fields["properties"] = props_copy
+            fields["properties"] = dict(updated_props)
+            if self.drop_property_on_readback:
+                fields["properties"].pop("unrelated", None)
             self.card = {**self.card, "fields": fields}
             return 200, self.card
         if method == "GET" and path.endswith(f"/boards/{BOARD}/blocks"):
@@ -387,6 +444,7 @@ class TriggerTests(unittest.TestCase):
     def test_one_kenza_card_moves_only_after_sent(self):
         with tempfile.TemporaryDirectory() as directory:
             trigger = FakeTrigger(Path(directory))
+            original = dict(trigger.card["fields"]["properties"])
             result = trigger.execute()
             self.assertEqual(result["state"], "sent")
             self.assertEqual(trigger.injector_calls, 1)
@@ -396,9 +454,17 @@ class TriggerTests(unittest.TestCase):
             self.assertNotIn("id", patch)
             self.assertNotIn("type", patch)
             patch_props = patch["updatedFields"]["properties"]
-            self.assertEqual(patch_props.get("sg_status"), "sg_status_ai_working")
+            expected = {**original, "sg_status": "sg_status_ai_working"}
+            self.assertEqual(patch_props, expected)
+            self.assertEqual(trigger.card["fields"]["properties"], expected)
             self.assertEqual(result["idempotency_key"], f"firstmate-bridge:{CARD}")
             self.assertEqual(result["max"], 1)
+
+    def test_readback_refuses_loss_of_other_properties(self):
+        with tempfile.TemporaryDirectory() as directory:
+            trigger = FakeTrigger(Path(directory), drop_property_on_readback=True)
+            with self.assertRaisesRegex(RuntimeError, "other properties did not survive"):
+                trigger.execute()
 
     def test_non_sent_result_never_moves_card(self):
         with tempfile.TemporaryDirectory() as directory:
