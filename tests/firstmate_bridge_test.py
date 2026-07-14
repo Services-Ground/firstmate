@@ -388,6 +388,8 @@ class FakeTrigger(trigger_module.Trigger):
 
     def call_injector_once(self, card, options):
         self.injector_calls += 1
+        if self.injector_state != "sent":
+            raise RuntimeError(f"injector did not durably send: {self.injector_state}")
         return {"state": self.injector_state, "card_id": CARD}
 
 

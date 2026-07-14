@@ -293,7 +293,7 @@ class Trigger:
         if status2 != 200 or not isinstance(blocks, list):
             raise RuntimeError(f"AI Working read-back failed: HTTP {status2}")
         refreshed = next(
-            (b for b in blocks if b.get("id") == self.args.card_id), None
+            (b for b in blocks if b.get("id") == self.args.card_id and not b.get("deleteAt")), None
         )
         if refreshed is None:
             raise RuntimeError("AI Working read-back: card not found after PATCH")
@@ -327,8 +327,6 @@ class Trigger:
             board, blocks = self.fetch_board()
             card, options, property_id = self.eligible_card(board, blocks)
             result = self.call_injector_once(card, options)
-            if result.get("state") != "sent":
-                raise RuntimeError("card cannot move before durable injector sent")
             self.move_to_working(card, options, property_id)
             state = {
                 "state": "sent",
