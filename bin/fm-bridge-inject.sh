@@ -276,7 +276,7 @@ jq_filter='{
 | if $target_channel_id != "" then .target_channel_id=$target_channel_id else . end
 | if $board_id != "" then .board_id=$board_id | .new_status=$new_status else . end'
 jq "${jq_args[@]}" "$jq_filter" > "$tmp_metadata" || fail_after_claim "cannot write dispatch metadata"
-validator_args=("$SCRIPT_DIR/fm-outbox-validate.py" "$tmp_metadata")
+validator_args=("$SCRIPT_DIR/fm-outbox-validate.py" "$tmp_metadata" --projects-file "$PROJECTS_FILE")
 for option in "${status_options[@]}"; do validator_args+=(--status-option "$option"); done
 python3 "${validator_args[@]}" >/dev/null || fail_after_claim "dispatch metadata failed contract validation"
 mv "$tmp_metadata" "$metadata" || fail_after_claim "cannot publish dispatch metadata"
