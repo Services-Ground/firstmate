@@ -91,6 +91,7 @@ It runs the Department Driver gate, requires a complete structured envelope, `Re
 It reads Hermes Kanban state for `task_exists_for_card` dedupe, fixes the idempotency key to `firstmate-bridge:<card_id>`, and enforces `--max 1`.
 It calls the injector once and moves the card to `AI Working` only after the injector returns durable `sent`.
 The Focalboard patch carries the full existing property map.
+The read-back verifies the target status persisted and that no other property was lost.
 
 ## Relay behavior
 

@@ -97,6 +97,10 @@ def validate_record(
     Board option labels are live board data, so callers handling a board sync must
     pass the labels returned by the board preflight. This intentionally prevents
     a display name or guessed status from reaching Mattermost first.
+
+    ``projects_file`` is the path to ``data/projects.md``; omit to resolve from
+    ``FM_BRIDGE_PROJECTS_FILE``, ``FM_HOME``, or the hard-coded relay default.
+    An unavailable or empty registry raises ``ContractError`` so the call fails closed.
     """
 
     if not isinstance(record, dict):
