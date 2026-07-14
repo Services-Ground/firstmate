@@ -95,13 +95,15 @@ The Focalboard patch carries the full existing property map.
 
 The relay takes an inter-process lock and validates the contract before any Mattermost post.
 It posts to Mattermost as Ron and patches Focalboard as Amina; each identity loads its token from the Hermes profile environment independently.
-For card-bound results it fetches the board and card and resolves the exact live status option before posting.
+For card-bound results it fetches the board and card and resolves the exact live option across the board's registered workflow properties before posting.
 Bad boards, missing cards, and unknown status labels therefore cannot leave a posted-but-unsynced handoff.
 
 A stable hash of schema version, task, card, and PR is the delivery key.
 The relay stores a durable two-phase marker after Mattermost posts and uses the same key as `pending_post_id`.
 Retries resume card sync without reposting, and recreating a result filename is deduped even after the original moved to `done/`.
-Focalboard status writes copy the full current `fields.properties` map and change only the status property.
+Focalboard writes send `updatedFields` with the full current property map, preserve unrelated fields, add the relay comment to `contentOrder`, and read the card back before recording success.
+On Department Driver boards, `QA / Review` updates the visible `sg_stage`, sets `sg_status` to `Human Reviewing`, and transfers the Holder field from the AI worker to the card's registered human reviewer while retaining AI-owner provenance.
+An HTTP 200 without the expected persisted properties and visible comment is an error, so the relay cannot falsely release the Phase A slot.
 Successful ship delivery appends `completed` to the injector ledger so the next Phase A card can run.
 
 ## Abdul-gated apply

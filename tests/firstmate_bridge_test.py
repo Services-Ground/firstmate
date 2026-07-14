@@ -109,18 +109,22 @@ class FakeRelay(relay_module.Relay):
         self.base = "https://mattermost.test"
         self.ron_token = "ron-test-token"
         self.amina_token = "amina-test-token"
-        self.policy = {"pilot_channels": {"agentic-development": {"channel_id": CHANNEL}}}
+        self.policy = {
+            "pilot_channels": {
+                "agentic-development": {
+                    "channel_id": CHANNEL,
+                    "display_name": "Agentic Development",
+                }
+            }
+        }
         self.outbox.mkdir(parents=True)
         self.posts = []
         self.comments = []
         self.patches = []
         self.board_ok = True
         self.fail_patch_once = False
-        self.options = {
-            "Ready for AI": "sg_status_ready_ai",
-            "AI Working": "sg_status_ai_working",
-            "QA / Review": "sg_status_review",
-        }
+        self.ignore_patch_once = False
+        self.reviewer_id = "r" * 26
         self.card = {
             "id": CARD,
             "type": "card",
@@ -129,6 +133,10 @@ class FakeRelay(relay_module.Relay):
             "fields": {
                 "properties": {
                     "sg_status": "sg_status_ai_working",
+                    "sg_stage": "sg_stage_in_progress",
+                    "sg_ai_owner": "kenza",
+                    "sg_human_reviewer": "romman",
+                    "sg_owner": "k" * 26,
                     "sg_priority": "sg_prio_high",
                     "unrelated": "preserve-me",
                 },
@@ -147,12 +155,28 @@ class FakeRelay(relay_module.Relay):
                         "id": "sg_status",
                         "name": "Status",
                         "options": [
-                            {"id": option_id, "value": label}
-                            for label, option_id in self.options.items()
+                            {"id": "sg_status_ready_ai", "value": "Ready for AI"},
+                            {"id": "sg_status_ai_working", "value": "AI Working"},
+                            {"id": "sg_status_human_reviewing", "value": "Human Reviewing"},
                         ],
-                    }
+                    },
+                    {
+                        "id": "sg_stage",
+                        "name": "Stage",
+                        "options": [
+                            {"id": "sg_stage_in_progress", "value": "In Progress"},
+                            {"id": "sg_stage_review", "value": "QA / Review"},
+                        ],
+                    },
+                    {
+                        "id": "sg_human_reviewer",
+                        "name": "Human Reviewer",
+                        "options": [{"id": "romman", "value": "Romman"}],
+                    },
                 ],
             }
+        if method == "GET" and path.endswith("/api/v4/users/username/romman"):
+            return 200, {"id": self.reviewer_id, "username": "romman"}
         if method == "GET" and path.endswith(f"/boards/{BOARD}/blocks"):
             return 200, [self.card, *self.comments]
         if method == "POST" and path == "/api/v4/posts":
@@ -166,7 +190,13 @@ class FakeRelay(relay_module.Relay):
             if self.fail_patch_once:
                 self.fail_patch_once = False
                 return 500, {"message": "retry"}
-            self.card = data
+            if self.ignore_patch_once:
+                self.ignore_patch_once = False
+                return 200, self.card
+            updated = data["updatedFields"]
+            fields = dict(self.card.get("fields") or {})
+            fields.update(updated)
+            self.card = {**self.card, "fields": fields}
             return 200, data
         return 404, {"path": path}
 
@@ -243,11 +273,36 @@ class RelayTests(unittest.TestCase):
         result = self.relay.process_file(self.write("preserve.json", ship_record()))
         self.assertEqual(result["status"], "done")
         payload = self.relay.patches[0]
-        properties = payload["fields"]["properties"]
-        self.assertEqual(properties["sg_status"], "sg_status_review")
+        properties = payload["updatedFields"]["properties"]
+        self.assertEqual(properties["sg_stage"], "sg_stage_review")
+        self.assertEqual(properties["sg_status"], "sg_status_human_reviewing")
+        self.assertEqual(properties["sg_owner"], self.relay.reviewer_id)
+        self.assertEqual(properties["sg_ai_owner"], "kenza")
         self.assertEqual(properties["sg_priority"], "sg_prio_high")
         self.assertEqual(properties["unrelated"], "preserve-me")
-        self.assertEqual(payload["fields"]["contentOrder"], ["text-1"])
+        content_order = payload["updatedFields"]["contentOrder"]
+        self.assertEqual(content_order[0], "text-1")
+        self.assertEqual(content_order[1], self.relay.comments[0]["id"])
+        self.assertIn("QA: Romman checks the PR", self.relay.comments[0]["title"])
+
+    def test_http_200_without_persisted_handoff_never_records_done(self):
+        self.relay.ignore_patch_once = True
+        result = self.relay.process_file(self.write("ignored-patch.json", ship_record()))
+        self.assertEqual(result["status"], "error")
+        self.assertIn("required handoff state did not persist", result["error"])
+        self.assertFalse(self.relay.dispatch_ledger.exists())
+        marker = self.relay._load_json(
+            self.relay.marker_path(self.relay.delivery_key(ship_record())), {}
+        )
+        self.assertEqual(marker["status"], "posted")
+
+    def test_agentic_development_name_routes_to_exact_channel(self):
+        record = ship_record(target_channel="Agentic Development")
+        del record["target_channel_id"]
+        result = self.relay.process_file(self.write("agentic.json", record))
+        self.assertEqual(result["status"], "done")
+        self.assertEqual(result["channel_source"], "policy:agentic-development")
+        self.assertEqual(self.relay.posts[0]["channel_id"], CHANNEL)
 
 
 class FakeTrigger(trigger_module.Trigger):

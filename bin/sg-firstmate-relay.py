@@ -24,7 +24,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator
 
-from fm_outbox_contract import ContractError, validate_record
+from fm_outbox_contract import ContractError, FOCALBOARD_ID_RE, validate_record
 
 STATUS_PROP = "sg_status"
 DEFAULT_CHANNEL_KEY = "agentic-development"
@@ -180,16 +180,33 @@ class Relay:
         return default, "fallback:agentic-development"
 
     @staticmethod
-    def board_status_options(board: dict[str, Any]) -> tuple[dict[str, str], str]:
+    def board_option_matches(board: dict[str, Any], wanted: str) -> list[tuple[str, str]]:
+        matches: list[tuple[str, str]] = []
         for prop in board.get("cardProperties") or []:
-            if prop.get("id") == STATUS_PROP or str(prop.get("name") or "").lower() == "status":
-                options = {
-                    str(option.get("value")): str(option.get("id"))
-                    for option in prop.get("options") or []
-                    if option.get("value") and option.get("id")
-                }
-                return options, str(prop.get("id") or STATUS_PROP)
-        return {}, STATUS_PROP
+            property_id = str(prop.get("id") or "")
+            for option in prop.get("options") or []:
+                if str(option.get("value") or "") == wanted and property_id and option.get("id"):
+                    matches.append((property_id, str(option["id"])))
+        return matches
+
+    @staticmethod
+    def board_option_labels(board: dict[str, Any]) -> set[str]:
+        return {
+            str(option["value"])
+            for prop in board.get("cardProperties") or []
+            for option in prop.get("options") or []
+            if option.get("value") and option.get("id")
+        }
+
+    @staticmethod
+    def property_option_value(board: dict[str, Any], property_id: str, option_id: str) -> str:
+        for prop in board.get("cardProperties") or []:
+            if prop.get("id") != property_id:
+                continue
+            for option in prop.get("options") or []:
+                if option.get("id") == option_id:
+                    return str(option.get("value") or "")
+        return ""
 
     def preflight_card(self, record: dict[str, Any]) -> dict[str, Any] | None:
         if "board_id" not in record:
@@ -220,14 +237,49 @@ class Relay:
         )
         if not card:
             raise ContractError("card preflight failed: card not found")
-        options, property_id = self.board_status_options(board)
-        validate_record(record, status_options=options)
+        validate_record(record, status_options=self.board_option_labels(board))
+        matches = self.board_option_matches(board, str(record["new_status"]))
+        if not matches:
+            raise ContractError("card preflight failed: status option not found")
+        if len(matches) != 1:
+            raise ContractError("card preflight failed: status option label is ambiguous")
+        property_id, status_id = matches[0]
+
+        property_updates = {property_id: status_id}
+        reviewer_label = "card owner"
+        properties = ((card.get("fields") or {}).get("properties") or {})
+        # Department Driver boards keep the visual lane in sg_stage and the
+        # execution state in sg_status. A QA handoff must update both and hand
+        # the Holder person field to the named human reviewer.
+        if property_id == "sg_stage" and record["new_status"] == "QA / Review":
+            reviewing = self.board_option_matches(board, "Human Reviewing")
+            reviewing = [match for match in reviewing if match[0] == STATUS_PROP]
+            if len(reviewing) != 1:
+                raise ContractError("card preflight failed: Human Reviewing workflow option missing")
+            property_updates[STATUS_PROP] = reviewing[0][1]
+            reviewer_option = str(properties.get("sg_human_reviewer") or "")
+            reviewer_label = self.property_option_value(board, "sg_human_reviewer", reviewer_option)
+            if not reviewer_label:
+                raise ContractError("card preflight failed: human reviewer is missing or unknown")
+            username = reviewer_option.strip().lower()
+            if not re.fullmatch(r"[a-z0-9._-]+", username):
+                raise ContractError("card preflight failed: human reviewer username is invalid")
+            status, user = self.api(
+                "GET",
+                f"/api/v4/users/username/{urllib.parse.quote(username)}",
+                amina=True,
+            )
+            reviewer_id = str(user.get("id") or "") if isinstance(user, dict) else ""
+            if status != 200 or not MATTERMOST_ID.fullmatch(reviewer_id):
+                raise ContractError("card preflight failed: human reviewer account cannot be resolved")
+            property_updates["sg_owner"] = reviewer_id
         return {
             "board": board,
             "blocks": blocks,
             "card": card,
-            "status_id": options[record["new_status"]],
-            "status_property_id": property_id,
+            "status_id": status_id,
+            "property_updates": property_updates,
+            "reviewer_label": reviewer_label,
         }
 
     @staticmethod
@@ -278,14 +330,21 @@ class Relay:
         card_id = str(record["card_id"])
         blocks = preflight["blocks"]
         marker = self.comment_marker(key)
-        comment_exists = any(
-            block.get("parentId") == card_id
-            and marker in str(block.get("title") or "")
-            and not block.get("deleteAt")
-            for block in blocks
+        comment_block = next(
+            (
+                block
+                for block in blocks
+                if block.get("parentId") == card_id
+                and marker in str(block.get("title") or "")
+                and not block.get("deleteAt")
+            ),
+            None,
         )
+        comment_exists = comment_block is not None
+        comment_id = str(comment_block.get("id") or "") if comment_block else "fm" + key[:25]
+        if not FOCALBOARD_ID_RE.fullmatch(comment_id):
+            raise RuntimeError("Focalboard comment id is not canonical")
         if not comment_exists:
-            comment_id = "fm" + key[:25]
             comment = {
                 "id": comment_id,
                 "parentId": card_id,
@@ -299,7 +358,7 @@ class Relay:
                         f"PR: {record['pr_url']}",
                         f"Risk: {record['risk']}",
                         f"Summary: {record['summary']}",
-                        "QA: check the PR against the card acceptance criteria; do not merge without Abdul gate.",
+                        f"QA: {preflight['reviewer_label']} checks the PR against the card acceptance criteria; do not merge without Abdul gate.",
                         f"Mattermost post: {post_id}",
                     ]
                 ),
@@ -316,7 +375,16 @@ class Relay:
                 [comment],
                 amina=True,
             )
-            if status not in (200, 201):
+            created_ids = (
+                {
+                    str(block.get("id") or "")
+                    for block in value
+                    if isinstance(block, dict)
+                }
+                if isinstance(value, list)
+                else set()
+            )
+            if status not in (200, 201) or comment_id not in created_ids:
                 raise RuntimeError(f"Focalboard comment failed: HTTP {status}: {value}")
 
         # Focalboard replaces updatedFields.properties. Copy the full current
@@ -324,18 +392,59 @@ class Relay:
         card = dict(preflight["card"])
         fields = dict(card.get("fields") or {})
         properties = dict(fields.get("properties") or {})
-        properties[preflight["status_property_id"]] = preflight["status_id"]
-        fields["properties"] = properties
-        card["fields"] = fields
-        card["updateAt"] = int(time.time() * 1000)
+        properties.update(preflight["property_updates"])
+        content_order = list(fields.get("contentOrder") or [])
+        if comment_id not in content_order:
+            content_order.append(comment_id)
+        updated_fields = {"properties": properties, "contentOrder": content_order}
         status, value = self.api(
             "PATCH",
             f"/plugins/focalboard/api/v2/boards/{board_id}/blocks/{card_id}",
-            card,
+            {"updatedFields": updated_fields},
             amina=True,
         )
         if status not in (200, 201):
             raise RuntimeError(f"Focalboard status update failed: HTTP {status}: {value}")
+
+        # Focalboard can return HTTP 200 while ignoring an invalid option or
+        # partial block payload. Never record done without reading back every
+        # required property and the visible comment ordering.
+        status, verified_blocks = self.api(
+            "GET", f"/plugins/focalboard/api/v2/boards/{board_id}/blocks", amina=True
+        )
+        if status != 200 or not isinstance(verified_blocks, list):
+            raise RuntimeError(f"Focalboard verification failed: HTTP {status}")
+        verified_card = next(
+            (
+                block
+                for block in verified_blocks
+                if block.get("id") == card_id
+                and block.get("type") == "card"
+                and not block.get("deleteAt")
+            ),
+            None,
+        )
+        verified_properties = (
+            ((verified_card or {}).get("fields") or {}).get("properties") or {}
+        )
+        verified_order = ((verified_card or {}).get("fields") or {}).get("contentOrder") or []
+        verified_comment = any(
+            block.get("id") == comment_id
+            and block.get("parentId") == card_id
+            and marker in str(block.get("title") or "")
+            and not block.get("deleteAt")
+            for block in verified_blocks
+        )
+        if (
+            not verified_card
+            or any(
+                verified_properties.get(name) != expected
+                for name, expected in preflight["property_updates"].items()
+            )
+            or comment_id not in verified_order
+            or not verified_comment
+        ):
+            raise RuntimeError("Focalboard verification failed: required handoff state did not persist")
         return f"comment={'existing' if comment_exists else 'created'};status={preflight['status_id']}"
 
     @staticmethod
