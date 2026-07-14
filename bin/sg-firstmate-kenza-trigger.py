@@ -140,6 +140,15 @@ class Trigger:
                 )
         return {}, STATUS_FIELD
 
+    @staticmethod
+    def board_all_option_labels(board: dict[str, Any]) -> set[str]:
+        return {
+            str(option.get("value"))
+            for prop in board.get("cardProperties") or []
+            for option in prop.get("options") or []
+            if option.get("value") and option.get("id")
+        }
+
     def gate(self) -> None:
         if not self.args.gate_command:
             raise SystemExit(
@@ -195,7 +204,7 @@ class Trigger:
 
     def eligible_card(
         self, board: dict[str, Any], blocks: list[dict[str, Any]]
-    ) -> tuple[dict[str, Any], dict[str, str], str]:
+    ) -> tuple[dict[str, Any], dict[str, str], str, set[str]]:
         card = next(
             (
                 block
@@ -215,7 +224,8 @@ class Trigger:
         options, property_id = self.status_options(board)
         ready_id = options.get(STATUS_READY)
         working_id = options.get(STATUS_WORKING)
-        if not ready_id or not working_id or self.args.new_status not in options:
+        all_labels = self.board_all_option_labels(board)
+        if not ready_id or not working_id or self.args.new_status not in all_labels:
             raise RuntimeError("required live status options are absent")
         if values.get(property_id) != ready_id:
             raise RuntimeError("card status is not Ready for AI")
@@ -233,12 +243,12 @@ class Trigger:
                 and other_values.get(property_id) == working_id
             ):
                 raise RuntimeError("Kenza already has an active AI Working card")
-        return card, options, property_id
+        return card, options, property_id, all_labels
 
     def call_injector_once(
         self,
         card: dict[str, Any],
-        options: dict[str, str],
+        all_labels: set[str],
     ) -> dict[str, Any]:
         values = props(card)
         command = [
@@ -262,7 +272,7 @@ class Trigger:
             command.extend(["--target-channel-id", self.args.target_channel_id])
         else:
             command.extend(["--target-channel", self.args.target_channel])
-        for label in options:
+        for label in all_labels:
             command.extend(["--status-option", label])
         result = run(command)
         try:
@@ -325,8 +335,8 @@ class Trigger:
                     "max": 1,
                 }
             board, blocks = self.fetch_board()
-            card, options, property_id = self.eligible_card(board, blocks)
-            result = self.call_injector_once(card, options)
+            card, options, property_id, all_labels = self.eligible_card(board, blocks)
+            result = self.call_injector_once(card, all_labels)
             self.move_to_working(card, options, property_id)
             state = {
                 "state": "sent",

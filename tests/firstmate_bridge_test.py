@@ -34,6 +34,34 @@ CARD = "a" * 27
 BOARD = "b" * 27
 CHANNEL = "c" * 26
 
+BOARD_FIXTURE = {
+    "id": BOARD,
+    "cardProperties": [
+        {
+            "id": "sg_status",
+            "name": "Status",
+            "options": [
+                {"id": "sg_status_ready_ai", "value": "Ready for AI"},
+                {"id": "sg_status_ai_working", "value": "AI Working"},
+                {"id": "sg_status_human_reviewing", "value": "Human Reviewing"},
+            ],
+        },
+        {
+            "id": "sg_stage",
+            "name": "Stage",
+            "options": [
+                {"id": "sg_stage_in_progress", "value": "In Progress"},
+                {"id": "sg_stage_review", "value": "QA / Review"},
+            ],
+        },
+        {
+            "id": "sg_human_reviewer",
+            "name": "Human Reviewer",
+            "options": [{"id": "romman", "value": "Romman"}],
+        },
+    ],
+}
+
 
 def ship_record(**updates):
     record = {
@@ -148,33 +176,7 @@ class FakeRelay(relay_module.Relay):
         if method == "GET" and path.endswith(f"/boards/{BOARD}"):
             if not self.board_ok:
                 return 404, {"message": "missing"}
-            return 200, {
-                "id": BOARD,
-                "cardProperties": [
-                    {
-                        "id": "sg_status",
-                        "name": "Status",
-                        "options": [
-                            {"id": "sg_status_ready_ai", "value": "Ready for AI"},
-                            {"id": "sg_status_ai_working", "value": "AI Working"},
-                            {"id": "sg_status_human_reviewing", "value": "Human Reviewing"},
-                        ],
-                    },
-                    {
-                        "id": "sg_stage",
-                        "name": "Stage",
-                        "options": [
-                            {"id": "sg_stage_in_progress", "value": "In Progress"},
-                            {"id": "sg_stage_review", "value": "QA / Review"},
-                        ],
-                    },
-                    {
-                        "id": "sg_human_reviewer",
-                        "name": "Human Reviewer",
-                        "options": [{"id": "romman", "value": "Romman"}],
-                    },
-                ],
-            }
+            return 200, BOARD_FIXTURE
         if method == "GET" and path.endswith("/api/v4/users/username/romman"):
             return 200, {"id": self.reviewer_id, "username": "romman"}
         if method == "GET" and path.endswith(f"/boards/{BOARD}/blocks"):
@@ -331,19 +333,7 @@ class FakeTrigger(trigger_module.Trigger):
         self.task_exists_value = task_exists
         self.injector_calls = 0
         self.patches = []
-        self.board = {
-            "cardProperties": [
-                {
-                    "id": "sg_status",
-                    "name": "Status",
-                    "options": [
-                        {"id": "sg_status_ready_ai", "value": "Ready for AI"},
-                        {"id": "sg_status_ai_working", "value": "AI Working"},
-                        {"id": "sg_status_review", "value": "QA / Review"},
-                    ],
-                }
-            ]
-        }
+        self.board = BOARD_FIXTURE
         self.card = {
             "id": CARD,
             "type": "card",
@@ -386,7 +376,7 @@ class FakeTrigger(trigger_module.Trigger):
             return 200, [self.card]
         return 404, {"path": path}
 
-    def call_injector_once(self, card, options):
+    def call_injector_once(self, card, all_labels):
         self.injector_calls += 1
         if self.injector_state != "sent":
             raise RuntimeError(f"injector did not durably send: {self.injector_state}")
