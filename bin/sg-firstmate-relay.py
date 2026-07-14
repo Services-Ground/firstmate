@@ -28,7 +28,7 @@ from fm_outbox_contract import ContractError, validate_record
 
 STATUS_PROP = "sg_status"
 DEFAULT_CHANNEL_KEY = "agentic-development"
-OPAQUE_ID = re.compile(r"^[a-z0-9]{26}$")
+MATTERMOST_ID = re.compile(r"^[a-z0-9]{26}$")
 
 
 def load_env(path: Path) -> dict[str, str]:
@@ -162,7 +162,7 @@ class Relay:
                     display.lower().replace(" ", "-"),
                 }:
                     resolved = str(channel.get("channel_id") or "")
-                    if OPAQUE_ID.fullmatch(resolved):
+                    if MATTERMOST_ID.fullmatch(resolved):
                         return resolved, f"policy:{key}"
             slug = re.sub(r"[^a-z0-9-]+", "-", normalized).strip("-")
             team_id = str(self.policy.get("team_id") or "")
@@ -171,11 +171,11 @@ class Relay:
             status, value = self.api(
                 "GET", f"/api/v4/teams/{team_id}/channels/name/{urllib.parse.quote(slug)}"
             )
-            if status == 200 and isinstance(value, dict) and OPAQUE_ID.fullmatch(str(value.get("id") or "")):
+            if status == 200 and isinstance(value, dict) and MATTERMOST_ID.fullmatch(str(value.get("id") or "")):
                 return str(value["id"]), f"mattermost:{slug}"
             raise ContractError(f"target_channel cannot be resolved exactly: {name}")
         default = str((channels.get(DEFAULT_CHANNEL_KEY) or {}).get("channel_id") or "")
-        if not OPAQUE_ID.fullmatch(default):
+        if not MATTERMOST_ID.fullmatch(default):
             raise ContractError("Agentic Development fallback channel is not configured")
         return default, "fallback:agentic-development"
 

@@ -31,7 +31,8 @@ ALLOWED_KEYS = frozenset(
 BASE_REQUIRED = frozenset(
     {"schema_version", "record_type", "task_id", "card_id", "repo", "mode"}
 )
-ID_RE = re.compile(r"^[a-z0-9]{26}$")
+FOCALBOARD_ID_RE = re.compile(r"^[a-z0-9]{27}$")
+MATTERMOST_ID_RE = re.compile(r"^[a-z0-9]{26}$")
 TASK_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
 PR_RE = re.compile(
     r"^https://github\.com/[^/\s]+/[^/\s]+/pull/[1-9][0-9]*(?:[/?#][^\s]*)?$"
@@ -86,8 +87,8 @@ def validate_record(
     card_id = _single_line(record["card_id"], "card_id", required=True)
     if not TASK_RE.fullmatch(task_id):
         raise ContractError("task_id must be a lowercase task slug")
-    if not ID_RE.fullmatch(card_id):
-        raise ContractError("card_id must be a 26-character opaque id")
+    if not FOCALBOARD_ID_RE.fullmatch(card_id):
+        raise ContractError("card_id must be a 27-character Focalboard id")
 
     for field in (
         "repo",
@@ -106,9 +107,12 @@ def validate_record(
         if field in record:
             _single_line(record[field], field, required=True)
 
-    for field in ("target_channel_id", "board_id"):
-        if field in record and not ID_RE.fullmatch(record[field]):
-            raise ContractError(f"{field} must be a 26-character opaque id")
+    if "target_channel_id" in record and not MATTERMOST_ID_RE.fullmatch(
+        record["target_channel_id"]
+    ):
+        raise ContractError("target_channel_id must be a 26-character Mattermost id")
+    if "board_id" in record and not FOCALBOARD_ID_RE.fullmatch(record["board_id"]):
+        raise ContractError("board_id must be a 27-character Focalboard id")
 
     if "abdul_gated_apply" in record:
         items = record["abdul_gated_apply"]

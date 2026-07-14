@@ -86,7 +86,7 @@ run_injector() {
 }
 
 test_double_call_is_card_idempotent() {
-  local runtime="$TMP_ROOT/double" card="d2345678901234567890123456" first second
+  local runtime="$TMP_ROOT/double" card="d23456789012345678901234567" first second
   make_runtime "$runtime"
   first=$(run_injector "$runtime" "$card") || fail "first injector call should send"
   second=$(run_injector "$runtime" "$card") || fail "second injector call should dedupe"
@@ -99,7 +99,7 @@ test_double_call_is_card_idempotent() {
 }
 
 test_absent_captain_fails_closed() {
-  local runtime="$TMP_ROOT/absent" card="e2345678901234567890123456" out rc
+  local runtime="$TMP_ROOT/absent" card="e23456789012345678901234567" out rc
   make_runtime "$runtime"
   set +e
   out=$(FM_TEST_CAPTAIN=absent run_injector "$runtime" "$card")
@@ -114,7 +114,7 @@ test_absent_captain_fails_closed() {
 }
 
 test_unknown_repo_and_multiline_are_refused() {
-  local runtime="$TMP_ROOT/refuse" card="f2345678901234567890123456"
+  local runtime="$TMP_ROOT/refuse" card="f23456789012345678901234567"
   make_runtime "$runtime"
   if timeout "$TEST_TIMEOUT" env PATH="$runtime/fakebin:$PATH" FM_HOME="$runtime/home" \
     FM_ROOT_OVERRIDE="$runtime/home" FM_TEST_RUNTIME="$runtime" \
@@ -130,7 +130,7 @@ test_unknown_repo_and_multiline_are_refused() {
 }
 
 test_kill_switch_precedes_claim() {
-  local runtime="$TMP_ROOT/paused" card="g2345678901234567890123456"
+  local runtime="$TMP_ROOT/paused" card="g23456789012345678901234567"
   make_runtime "$runtime"
   mkdir -p "$runtime/home/state/bridge"
   : > "$runtime/home/state/bridge/PAUSED"
@@ -141,7 +141,7 @@ test_kill_switch_precedes_claim() {
 }
 
 test_pending_composer_and_busy_pane_fail_closed() {
-  local runtime="$TMP_ROOT/composer" card="k2345678901234567890123456" out
+  local runtime="$TMP_ROOT/composer" card="k23456789012345678901234567" out
   make_runtime "$runtime"
   out=$(FM_TEST_COMPOSER=pending run_injector "$runtime" "$card" 2>/dev/null) || true
   [ "$(printf '%s' "$out" | jq -r .state)" = failed-before-send ] \
@@ -157,7 +157,7 @@ test_pending_composer_and_busy_pane_fail_closed() {
 }
 
 test_protected_intent_matrix() {
-  local runtime="$TMP_ROOT/protected" card="m2345678901234567890123456" intent
+  local runtime="$TMP_ROOT/protected" card="m23456789012345678901234567" intent
   make_runtime "$runtime"
   for intent in \
     'Deploy the application.' \
@@ -176,7 +176,7 @@ test_protected_intent_matrix() {
 }
 
 test_phase_a_allows_only_one_active_bridge_card() {
-  local runtime="$TMP_ROOT/one-card" first="n2345678901234567890123456" second="p2345678901234567890123456"
+  local runtime="$TMP_ROOT/one-card" first="n23456789012345678901234567" second="p23456789012345678901234567"
   make_runtime "$runtime"
   run_injector "$runtime" "$first" >/dev/null || fail "first bridge card should send"
   run_injector "$runtime" "$second" >/dev/null 2>&1 && fail "second active bridge card must be refused"
@@ -185,7 +185,7 @@ test_phase_a_allows_only_one_active_bridge_card() {
 }
 
 test_authoritative_live_task_cap() {
-  local runtime="$TMP_ROOT/cap" card="j2345678901234567890123456" i
+  local runtime="$TMP_ROOT/cap" card="j23456789012345678901234567" i
   make_runtime "$runtime"
   for i in $(seq 1 10); do
     printf 'window=fm:task-%s\nkind=ship\nworktree=%s/home/projects/firstmate\n' \
@@ -197,7 +197,7 @@ test_authoritative_live_task_cap() {
 }
 
 test_uncertain_ack_never_retypes() {
-  local runtime="$TMP_ROOT/uncertain" card="h2345678901234567890123456" out rc
+  local runtime="$TMP_ROOT/uncertain" card="h23456789012345678901234567" out rc
   make_runtime "$runtime"
   set +e
   out=$(FM_TEST_ACK=unknown run_injector "$runtime" "$card")

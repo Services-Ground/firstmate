@@ -82,8 +82,8 @@ case "$repo" in firstmate|bracket_report|lead-ops-agent) ;; *)
   exit 2
   ;;
 esac
-printf '%s' "$card_id" | grep -Eq '^[a-z0-9]{26}$' || {
-  echo "fm-bridge-inject: card_id must be a 26-character opaque id" >&2
+printf '%s' "$card_id" | grep -Eq '^[a-z0-9]{27}$' || {
+  echo "fm-bridge-inject: card_id must be a 27-character Focalboard id" >&2
   exit 2
 }
 [ -r "$brief_path" ] || { echo "fm-bridge-inject: brief is not readable: $brief_path" >&2; exit 2; }
@@ -101,8 +101,8 @@ if [ -n "$target_channel_id" ]; then
   printf '%s' "$target_channel_id" | grep -Eq '^[a-z0-9]{26}$' || exit 2
 fi
 if [ -n "$board_id" ] || [ -n "$new_status" ]; then
-  printf '%s' "$board_id" | grep -Eq '^[a-z0-9]{26}$' || {
-    echo "fm-bridge-inject: board_id must be a 26-character opaque id" >&2; exit 2; }
+  printf '%s' "$board_id" | grep -Eq '^[a-z0-9]{27}$' || {
+    echo "fm-bridge-inject: board_id must be a 27-character Focalboard id" >&2; exit 2; }
   single_line "$new_status" || { echo "fm-bridge-inject: new_status is required with board_id" >&2; exit 2; }
   [ "${#status_options[@]}" -gt 0 ] || {
     echo "fm-bridge-inject: board sync requires live --status-option labels" >&2; exit 2; }

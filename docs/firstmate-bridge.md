@@ -31,14 +31,14 @@ A ship result requires:
   "schema_version": "1.0",
   "record_type": "result",
   "task_id": "firstmate-bridge-build",
-  "card_id": "aaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "card_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "repo": "firstmate",
   "mode": "ship",
   "pr_url": "https://github.com/Services-Ground/firstmate/pull/123",
   "risk": "medium",
   "summary": "Phase A bridge implementation and tests.",
   "target_channel": "Agentic Development",
-  "board_id": "bbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "board_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "new_status": "QA / Review",
   "abdul_gated_apply": [
     "Mask the legacy firstmate-mattermost-outbox.path unit and verify both watcher units inactive and masked.",
@@ -49,6 +49,7 @@ A ship result requires:
 
 `target_channel_id` is preferred when known.
 `target_channel` is used only when it resolves exactly, while an absent target falls back to the policy's Agentic Development channel.
+Focalboard board and card IDs are 27 characters; Mattermost channel IDs are 26 characters.
 `board_id` and `new_status` must appear together.
 The validator requires the exact live board option labels whenever a board sync is requested.
 A scout result is explicit with `mode: "scout"`, contains no `pr_url`, and is archived without a fake PR post.

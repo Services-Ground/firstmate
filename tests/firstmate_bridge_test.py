@@ -30,8 +30,8 @@ def load_script(name: str, filename: str):
 relay_module = load_script("sg_firstmate_relay", "sg-firstmate-relay.py")
 trigger_module = load_script("sg_firstmate_trigger", "sg-firstmate-kenza-trigger.py")
 
-CARD = "a" * 26
-BOARD = "b" * 26
+CARD = "a" * 27
+BOARD = "b" * 27
 CHANNEL = "c" * 26
 
 
@@ -86,6 +86,8 @@ class ContractTests(unittest.TestCase):
         self.assert_rejected({**ship_record(), "repo": "symbol_lookup"}, ["QA / Review"])
         self.assert_rejected(ship_record(), ["Done"])
         self.assert_rejected({**ship_record(), "target_channel_id": "short"}, ["QA / Review"])
+        self.assert_rejected({**ship_record(), "card_id": "a" * 26}, ["QA / Review"])
+        self.assert_rejected({**ship_record(), "board_id": "b" * 26}, ["QA / Review"])
         self.assert_rejected({**ship_record(), "extra": "alias"}, ["QA / Review"])
 
     def test_scout_is_explicitly_non_pr(self):
@@ -227,7 +229,7 @@ class RelayTests(unittest.TestCase):
         self.assertEqual(result["status"], "error")
         self.assertEqual(self.relay.posts, [])
         self.relay.board_ok = True
-        self.relay.card["id"] = "z" * 26
+        self.relay.card["id"] = "z" * 27
         result = self.relay.process_file(self.write("missing-card.json", ship_record()))
         self.assertEqual(result["status"], "error")
         self.assertEqual(self.relay.posts, [])
@@ -385,7 +387,7 @@ class TriggerTests(unittest.TestCase):
             root = Path(directory)
             trigger = FakeTrigger(root)
             active = json.loads(json.dumps(trigger.card))
-            active["id"] = "z" * 26
+            active["id"] = "z" * 27
             active["fields"]["properties"]["sg_status"] = "sg_status_ai_working"
             trigger.fetch_board = lambda: (trigger.board, [trigger.card, active])
             with self.assertRaisesRegex(RuntimeError, "already has an active"):
