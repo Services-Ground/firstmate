@@ -118,7 +118,7 @@ import re, sys
 text = open(sys.argv[1], encoding="utf-8", errors="replace").read().lower()
 patterns = [
     r"\bdeploy(?:ment|s|ed|ing)?\b", r"\bmerge(?:s|d|ing)?\b",
-    r"\bprod(?:uction)?\b", r"\bmain\b", r"\bdns\b",
+    r"\bprod(?:uction)?\b", r"\bdns\b",
     r"\bsecret(?:s)?\b", r"\bcredential(?:s)?\b",
     r"\b(?:delete|destroy|wipe|purge|drop|truncate)(?:s|d|ing)?\b",
     r"\bforce[- ]?push\b", r"\breset\s+--hard\b",

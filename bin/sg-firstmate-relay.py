@@ -91,7 +91,7 @@ class Relay:
         self.amina_token = (
             os.environ.get("FM_RELAY_AMINA_TOKEN")
             or amina_env.get("MATTERMOST_TOKEN")
-            or self.ron_token
+            or ""
         )
         self.policy = self._load_json(self.policy_path, {})
 
@@ -285,7 +285,7 @@ class Relay:
             for block in blocks
         )
         if not comment_exists:
-            comment_id = "fm" + key[:24]
+            comment_id = "fm" + key[:25]
             comment = {
                 "id": comment_id,
                 "parentId": card_id,
