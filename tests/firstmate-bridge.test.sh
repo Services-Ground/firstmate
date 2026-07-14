@@ -153,6 +153,7 @@ test_registry_addition_enables_repo_without_code_change() {
 }
 
 test_bridge_path_has_no_hardcoded_repo_gate() {
+  # shellcheck disable=SC2016  # single quotes intentional: searching for literal $repo text in source files
   if grep -Eq 'ALLOWED_REPOS|case "\$repo"|"repo"[[:space:]]*:[[:space:]]*\{[[:space:]]*"enum"' \
     "$ROOT/bin/fm-bridge-inject.sh" \
     "$ROOT/bin/fm_outbox_contract.py" \
