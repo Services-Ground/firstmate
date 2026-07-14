@@ -122,6 +122,7 @@ patterns = [
     r"\bsecret(?:s)?\b", r"\bcredential(?:s)?\b",
     r"\b(?:delete|destroy|wipe|purge|drop|truncate)(?:s|d|ing)?\b",
     r"\bforce[- ]?push\b", r"\breset\s+--hard\b",
+    r"\bmain\s+branch\b",
 ]
 negated = re.compile(r"(?:(?:\bnever\b|\bdo not\b|\bdon't\b|\bmust not\b|\bno\b).{0,48}|\bwithout\b.{0,16})$")
 for pattern in patterns:

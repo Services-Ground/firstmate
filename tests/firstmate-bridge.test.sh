@@ -172,7 +172,7 @@ test_protected_intent_matrix() {
   done
   assert_absent "$runtime/home/state/bridge/dispatch-ledger.jsonl" "protected intent must be refused before claim"
   assert_absent "$runtime/log/send.log" "protected intent must never send"
-  pass "injector refuses deploy, merge, main, production, secrets, DNS, and destructive intent"
+  pass "injector refuses deploy, merge, main-branch, production, secrets, DNS, and destructive intent"
 }
 
 test_phase_a_allows_only_one_active_bridge_card() {
