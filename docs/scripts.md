@@ -19,7 +19,7 @@ Each file also starts with a short header comment.
 | `fm-merge-local.sh`      | Fast-forward a `local-only` project's local default branch after approval                                           |
 | `fm_outbox_contract.py`  | Dependency-free runtime validator library for the Firstmate Bridge outbox contract; imported by `fm-outbox-validate.py` and `sg-firstmate-relay.py` |
 | `fm-outbox-validate.py`  | Validate one versioned Firstmate Bridge dispatch or result root object, including exact live board status labels    |
-| `fm-bridge-inject.sh`    | Claim one bridge card durably, enforce the kill switch, exact repo allowlist, live-task cap, one-card Phase A cap, verified captain target, empty composer, and strict one-line acknowledgement |
+| `fm-bridge-inject.sh`    | Claim one bridge card durably, enforce the kill switch, registry-loaded exact repo allowlist, live-task cap, one-card Phase A cap, verified captain target, empty composer, and strict one-line acknowledgement |
 | `sg-firstmate-kenza-trigger.py` | Run the manual one-card Kenza Department Driver gate and call the injector once, moving the card to `AI Working` only after durable `sent` |
 | `sg-firstmate-relay.py`  | Canonical deployable Hermes relay with root-contract validation, board preflight, recreated-result dedupe, resumable post/card sync, and full-property-map Focalboard writes |
 | `fm-mattermost-outbox-watch.sh` | Legacy rollback-era watcher retained for compatibility; do not newly enable it because the strict Phase A contract and hardened Hermes relay supersede its alias-based parsing and raw status sync |

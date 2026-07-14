@@ -3,11 +3,12 @@
 
 from __future__ import annotations
 
+import os
 import re
+from pathlib import Path
 from typing import Any, Iterable
 
 SCHEMA_VERSION = "1.0"
-ALLOWED_REPOS = frozenset({"firstmate", "bracket_report", "lead-ops-agent"})
 ALLOWED_KEYS = frozenset(
     {
         "schema_version",
@@ -34,6 +35,7 @@ BASE_REQUIRED = frozenset(
 FOCALBOARD_ID_RE = re.compile(r"^[a-z0-9]{27}$")
 MATTERMOST_ID_RE = re.compile(r"^[a-z0-9]{26}$")
 TASK_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
+REPO_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,79}$")
 PR_RE = re.compile(
     r"^https://github\.com/[^/\s]+/[^/\s]+/pull/[1-9][0-9]*(?:[/?#][^\s]*)?$"
 )
@@ -41,6 +43,37 @@ PR_RE = re.compile(
 
 class ContractError(ValueError):
     """A record is not safe to dispatch or relay."""
+
+
+def default_projects_file() -> Path:
+    configured = os.environ.get("FM_BRIDGE_PROJECTS_FILE")
+    if configured:
+        return Path(configured)
+    home = os.environ.get("FM_HOME")
+    if home:
+        return Path(home) / "data/projects.md"
+    return Path("/home/hp/firstmate/data/projects.md")
+
+
+def registered_repos(projects_file: str | Path | None = None) -> frozenset[str]:
+    """Load the exact bridge repo allowlist from the Firstmate project registry."""
+
+    path = Path(projects_file) if projects_file is not None else default_projects_file()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as error:
+        raise ContractError(f"project registry is unavailable: {path}") from error
+    repos: set[str] = set()
+    for line in lines:
+        fields = line.split()
+        if not fields or fields[0] != "-":
+            continue
+        if len(fields) < 2 or not REPO_RE.fullmatch(fields[1]):
+            raise ContractError(f"project registry has an invalid repo key: {path}")
+        repos.add(fields[1])
+    if not repos:
+        raise ContractError(f"project registry has no registered repos: {path}")
+    return frozenset(repos)
 
 
 def _single_line(value: Any, field: str, *, required: bool = False) -> str:
@@ -57,12 +90,17 @@ def validate_record(
     record: Any,
     *,
     status_options: Iterable[str] | None = None,
+    projects_file: str | Path | None = None,
 ) -> dict[str, Any]:
     """Validate and return a Firstmate Bridge root object.
 
     Board option labels are live board data, so callers handling a board sync must
     pass the labels returned by the board preflight. This intentionally prevents
     a display name or guessed status from reaching Mattermost first.
+
+    ``projects_file`` is the path to ``data/projects.md``; omit to resolve from
+    ``FM_BRIDGE_PROJECTS_FILE``, ``FM_HOME``, or the hard-coded relay default.
+    An unavailable or empty registry raises ``ContractError`` so the call fails closed.
     """
 
     if not isinstance(record, dict):
@@ -80,9 +118,6 @@ def validate_record(
         raise ContractError("record_type must be dispatch or result")
     if record["mode"] not in {"ship", "scout"}:
         raise ContractError("mode must be ship or scout")
-    if record["repo"] not in ALLOWED_REPOS:
-        raise ContractError("repo is not in the exact Firstmate project allowlist")
-
     task_id = _single_line(record["task_id"], "task_id", required=True)
     card_id = _single_line(record["card_id"], "card_id", required=True)
     if not TASK_RE.fullmatch(task_id):
@@ -106,6 +141,11 @@ def validate_record(
     ):
         if field in record:
             _single_line(record[field], field, required=True)
+
+    if not REPO_RE.fullmatch(record["repo"]):
+        raise ContractError("repo must be a safe lowercase project key")
+    if record["repo"] not in registered_repos(projects_file):
+        raise ContractError("repo is not exactly registered in the Firstmate project registry")
 
     if "target_channel_id" in record and not MATTERMOST_ID_RE.fullmatch(
         record["target_channel_id"]

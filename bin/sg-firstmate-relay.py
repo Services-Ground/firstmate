@@ -84,6 +84,13 @@ class Relay:
                 "/home/hp/firstmate/state/bridge/dispatch-ledger.jsonl",
             )
         )
+        firstmate_home = Path(os.environ.get("FM_HOME", "/home/hp/firstmate"))
+        self.projects_file = Path(
+            os.environ.get(
+                "FM_BRIDGE_PROJECTS_FILE",
+                str(firstmate_home / "data/projects.md"),
+            )
+        )
         base_env = load_env(home / ".env")
         amina_env = {**base_env, **load_env(home / "profiles/amina/.env")}
         self.base = (os.environ.get("FM_RELAY_BASE_URL") or base_env.get("MATTERMOST_URL") or "").rstrip("/")
@@ -210,11 +217,15 @@ class Relay:
 
     def preflight_card(self, record: dict[str, Any]) -> dict[str, Any] | None:
         if "board_id" not in record:
-            validate_record(record)
+            validate_record(record, projects_file=self.projects_file)
             return None
         # First reject malformed roots and display-name ids without trusting a
         # caller-provided status. The real option set is checked after the GETs.
-        validate_record(record, status_options=[str(record.get("new_status") or "")])
+        validate_record(
+            record,
+            status_options=[str(record.get("new_status") or "")],
+            projects_file=self.projects_file,
+        )
         board_id = str(record["board_id"])
         card_id = str(record["card_id"])
         status, board = self.api("GET", f"/plugins/focalboard/api/v2/boards/{board_id}", amina=True)
@@ -237,7 +248,11 @@ class Relay:
         )
         if not card:
             raise ContractError("card preflight failed: card not found")
-        validate_record(record, status_options=self.board_option_labels(board))
+        validate_record(
+            record,
+            status_options=self.board_option_labels(board),
+            projects_file=self.projects_file,
+        )
         matches = self.board_option_matches(board, str(record["new_status"]))
         if not matches:
             raise ContractError("card preflight failed: status option not found")
@@ -481,9 +496,13 @@ class Relay:
             record = json.loads(path.read_text(encoding="utf-8"))
             # Reject arrays and malformed ids before any network write.
             if isinstance(record, dict) and record.get("new_status"):
-                validate_record(record, status_options=[str(record["new_status"])])
+                validate_record(
+                    record,
+                    status_options=[str(record["new_status"])],
+                    projects_file=self.projects_file,
+                )
             else:
-                validate_record(record)
+                validate_record(record, projects_file=self.projects_file)
             if record["record_type"] != "result":
                 raise ContractError("relay accepts result records only")
             key = self.delivery_key(record)

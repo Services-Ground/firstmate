@@ -78,10 +78,16 @@ SH
 run_injector() {
   local runtime=$1 card=$2
   shift 2
+  run_injector_repo "$runtime" "$card" firstmate "$@"
+}
+
+run_injector_repo() {
+  local runtime=$1 card=$2 repo=$3
+  shift 3
   timeout "$TEST_TIMEOUT" env PATH="$runtime/fakebin:$PATH" FM_HOME="$runtime/home" \
     FM_ROOT_OVERRIDE="$runtime/home" FM_TEST_RUNTIME="$runtime" FM_BRIDGE_SEND_SETTLE=0 \
     "$ROOT/bin/fm-bridge-inject.sh" \
-      --repo firstmate --brief-path "$runtime/brief.md" --card-id "$card" --mode ship \
+      --repo "$repo" --brief-path "$runtime/brief.md" --card-id "$card" --mode ship \
       --canonical-thread thread-123 "$@"
 }
 
@@ -127,6 +133,34 @@ test_unknown_repo_and_multiline_are_refused() {
   fi
   assert_absent "$runtime/log/send.log" "rejected input must not send"
   pass "injector refuses unknown repos and multiline input"
+}
+
+test_registry_addition_enables_repo_without_code_change() {
+  local runtime="$TMP_ROOT/registry-add" card="r23456789012345678901234567" out
+  make_runtime "$runtime"
+  mkdir -p "$runtime/home/projects/symbol_lookup"
+  printf '%s\n' '- symbol_lookup [no-mistakes] - added by runtime config' \
+    >> "$runtime/home/data/projects.md"
+  out=$(run_injector_repo "$runtime" "$card" symbol_lookup) \
+    || fail "repo added only to projects.md should dispatch"
+  [ "$(printf '%s' "$out" | jq -r .repo)" = symbol_lookup ] \
+    || fail "registry-added repo must not fall back to firstmate"
+  [ "$(printf '%s' "$out" | jq -r .state)" = sent ] \
+    || fail "registry-added repo must reach the normal send path"
+  [ "$(jq -r .repo "$runtime/home/data/bridge/dispatch/$card.json")" = symbol_lookup ] \
+    || fail "dispatch metadata must preserve the registry-added repo"
+  pass "injector allowlist is driven only by projects.md"
+}
+
+test_bridge_path_has_no_hardcoded_repo_gate() {
+  # shellcheck disable=SC2016  # single quotes intentional: searching for literal $repo text in source files
+  if grep -Eq 'ALLOWED_REPOS|case "\$repo"|"repo"[[:space:]]*:[[:space:]]*\{[[:space:]]*"enum"' \
+    "$ROOT/bin/fm-bridge-inject.sh" \
+    "$ROOT/bin/fm_outbox_contract.py" \
+    "$ROOT/docs/contracts/firstmate-outbox-v1.schema.json"; then
+    fail "bridge repo path must not contain a second hardcoded allowlist"
+  fi
+  pass "bridge repo path has no second hardcoded allowlist"
 }
 
 test_kill_switch_precedes_claim() {
@@ -213,6 +247,8 @@ test_uncertain_ack_never_retypes() {
 test_double_call_is_card_idempotent
 test_absent_captain_fails_closed
 test_unknown_repo_and_multiline_are_refused
+test_registry_addition_enables_repo_without_code_change
+test_bridge_path_has_no_hardcoded_repo_gate
 test_kill_switch_precedes_claim
 test_pending_composer_and_busy_pane_fail_closed
 test_protected_intent_matrix

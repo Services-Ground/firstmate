@@ -289,10 +289,13 @@ class Trigger:
         options: dict[str, str],
         property_id: str,
     ) -> None:
+        original_properties = props(card)
+        updated_properties = dict(original_properties)
+        updated_properties[property_id] = options[STATUS_WORKING]
         status, value = self.api(
             "PATCH",
             f"/plugins/focalboard/api/v2/boards/{self.args.board_id}/blocks/{self.args.card_id}",
-            {"updatedFields": {"properties": {property_id: options[STATUS_WORKING]}}},
+            {"updatedFields": {"properties": updated_properties}},
         )
         if status not in (200, 201):
             raise RuntimeError(f"AI Working update failed: HTTP {status}: {value}")
@@ -307,10 +310,25 @@ class Trigger:
         )
         if refreshed is None:
             raise RuntimeError("AI Working read-back: card not found after PATCH")
-        actual = ((refreshed.get("fields") or {}).get("properties") or {}).get(property_id)
+        refreshed_properties = (refreshed.get("fields") or {}).get("properties") or {}
+        actual = refreshed_properties.get(property_id)
         if actual != options[STATUS_WORKING]:
             raise RuntimeError(
                 f"AI Working did not persist: got {actual!r}, want {options[STATUS_WORKING]!r}"
+            )
+        changed_or_missing = sorted(
+            name
+            for name, expected in original_properties.items()
+            if name != property_id
+            and (
+                name not in refreshed_properties
+                or refreshed_properties[name] != expected
+            )
+        )
+        if changed_or_missing:
+            raise RuntimeError(
+                "AI Working read-back: other properties did not survive: "
+                + ", ".join(changed_or_missing)
             )
 
     def execute(self) -> dict[str, Any]:

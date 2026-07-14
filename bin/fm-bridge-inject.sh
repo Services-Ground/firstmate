@@ -77,11 +77,10 @@ for required in repo brief_path card_id mode canonical_thread; do
   }
 done
 case "$mode" in ship|scout) ;; *) echo "fm-bridge-inject: mode must be ship or scout" >&2; exit 2 ;; esac
-case "$repo" in firstmate|bracket_report|lead-ops-agent) ;; *)
-  echo "fm-bridge-inject: repo is not in the exact bridge allowlist" >&2
+printf '%s' "$repo" | grep -Eq '^[a-z0-9][a-z0-9_-]{0,79}$' || {
+  echo "fm-bridge-inject: repo must be a safe lowercase project key" >&2
   exit 2
-  ;;
-esac
+}
 printf '%s' "$card_id" | grep -Eq '^[a-z0-9]{27}$' || {
   echo "fm-bridge-inject: card_id must be a 27-character Focalboard id" >&2
   exit 2
@@ -277,7 +276,7 @@ jq_filter='{
 | if $target_channel_id != "" then .target_channel_id=$target_channel_id else . end
 | if $board_id != "" then .board_id=$board_id | .new_status=$new_status else . end'
 jq "${jq_args[@]}" "$jq_filter" > "$tmp_metadata" || fail_after_claim "cannot write dispatch metadata"
-validator_args=("$SCRIPT_DIR/fm-outbox-validate.py" "$tmp_metadata")
+validator_args=("$SCRIPT_DIR/fm-outbox-validate.py" "$tmp_metadata" --projects-file "$PROJECTS_FILE")
 for option in "${status_options[@]}"; do validator_args+=(--status-option "$option"); done
 python3 "${validator_args[@]}" >/dev/null || fail_after_claim "dispatch metadata failed contract validation"
 mv "$tmp_metadata" "$metadata" || fail_after_claim "cannot publish dispatch metadata"

@@ -66,7 +66,8 @@ bin/fm-outbox-validate.py result.json \
 ## Injector safety
 
 The injector accepts one exact registered repository, readable brief, opaque card id, `ship|scout` mode, and canonical routing metadata.
-The allowed registered repository names are `firstmate`, `bracket_report`, and `lead-ops-agent`.
+The exact allowlist is loaded from `$FM_BRIDGE_PROJECTS_FILE`, defaulting to `$FM_HOME/data/projects.md` for the injector and `/home/hp/firstmate/data/projects.md` for the deployed relay.
+Adding or removing a repository is a registry-only change; unknown names and an unavailable or empty registry fail closed.
 Unknown names are refused and never fall back to `firstmate`.
 
 Create `$FM_HOME/state/bridge/PAUSED` to activate the kill switch.
@@ -90,6 +91,7 @@ It runs the Department Driver gate, requires a complete structured envelope, `Re
 It reads Hermes Kanban state for `task_exists_for_card` dedupe, fixes the idempotency key to `firstmate-bridge:<card_id>`, and enforces `--max 1`.
 It calls the injector once and moves the card to `AI Working` only after the injector returns durable `sent`.
 The Focalboard patch carries the full existing property map.
+The read-back verifies the target status persisted and that no other property was lost.
 
 ## Relay behavior
 
