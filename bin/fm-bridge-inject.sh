@@ -134,7 +134,7 @@ for pattern in patterns:
             raise SystemExit(1)
 PY
 then
-  echo "fm-bridge-inject: protected, production, secret, DNS, merge, deploy, or destructive intent refused" >&2
+  echo "fm-bridge-inject: protected, production, secret, DNS, merge, deploy, or destructive intent refused. See command-center/firstmate-briefs/BRIEF-WRITING-GUIDE.md for safe phrasings." >&2
   exit 2
 fi
 
@@ -238,7 +238,7 @@ while IFS=$'\t' read -r target window_name pane_path pane_pid; do
   process_has_codex "$pane_pid" || continue
   captain_candidates+=("$target")
   [ "$window_name" = captain ] && stable_candidates+=("$target")
-done < <(tmux list-panes -s -t fm -F '#{session_name}:#{window_name}.#{pane_index}\t#{window_name}\t#{pane_current_path}\t#{pane_pid}' 2>/dev/null)
+done < <(tmux list-panes -s -t fm -F '#{session_name}:#{window_name}.#{pane_index}	#{window_name}	#{pane_current_path}	#{pane_pid}' 2>/dev/null)
 
 target=
 if [ "${#stable_candidates[@]}" -eq 1 ]; then
