@@ -45,7 +45,7 @@ case "${1:-}" in
   capture-pane)
     case "$*" in
       *' -e '*|*' -e'*)
-        if [ "${FM_TEST_COMPOSER:-empty}" = pending ]; then printf '> human draft\n'; else printf '>\n'; fi
+        if [ "${FM_TEST_COMPOSER:-empty}" = pending ]; then printf '> human draft\n'; else printf '›\n'; fi
         ;;
       *)
         if [ "${FM_TEST_BUSY:-idle}" = busy ]; then printf 'esc to interrupt\n'; else printf 'idle\n'; fi
